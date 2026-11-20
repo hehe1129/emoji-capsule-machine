@@ -19,7 +19,7 @@ npm.cmd run dev
 
 ## 摄像头手势
 
-1. 在本机地址打开页面，点击右上角「启用摄像头」并允许访问。如果内置预览无法授权摄像头，请在 Edge 或 Chrome 打开相同地址。
+1. 用 Edge 或 Chrome 打开 HTTPS 网页或本机预览地址，点击右上角「启用摄像头」并允许访问。如果内置预览无法授权摄像头，请直接在浏览器打开网页。
 2. 让一只手完整入镜，光标会跟随手掌移动。先张手，再握拳抓取 Emoji 或操作按钮，张手可释放。手离开画面一小段时间后，抓住的 Emoji 会自动释放。重新入镜时先张手。光标未出现时，在「调试设置 → 手势校准」查看本地摄像头画面。
 3. 用「调试设置 → 手势校准」调整置信度、水平镜像、水平和垂直裁边比例、手部高度，以及手势光标平滑。默认工作范围已向摄像头画面的下方移动。手还需要完整入镜，若仍觉得需要抬手，可把「手部高度」的数值调大。增大裁边可用更小的手部移动覆盖同一屏幕范围。校准值在当前页面内生效。
 4. 点击「切回鼠标」可关闭摄像头。摄像头权限、设备或播放出错时，界面会提示原因并切回鼠标。画面暂时中断时会等待新画面，超时后在顶部提示。模型或识别出错时，调试预览仍可检查摄像头画面，顶部提示如何重试。
@@ -34,6 +34,24 @@ npm.cmd run preview
 ```
 
 预览默认地址为 [http://localhost:4173/](http://localhost:4173/)。换电脑时可复制源码及锁文件，在新机器上运行 `npm.cmd ci` 并重新构建。也可以复制 `dist/`，通过目标电脑的本地静态 HTTP 服务提供文件。首次安装需要 npm 仓库访问。构建产物包含 MediaPipe WASM 和模型，运行时无需互联网。摄像头画面仅在浏览器本地处理，页面的连接策略会阻止 SDK 向外部发送使用指标。Emoji 由系统字体绘制，外观随系统而变化。
+
+## Cloudflare Pages 部署
+
+将 GitHub 仓库连接到 Cloudflare 控制台的 **Workers & Pages → Create application → Pages → Connect to Git**。首次连接时授权 GitHub，并选择本项目仓库。 [Cloudflare Pages Git 集成指南](https://developers.cloudflare.com/pages/get-started/git-integration/)
+
+| 配置项 | 值 |
+| --- | --- |
+| Production branch | `main` |
+| Root directory | 仓库根目录，保持默认 |
+| Build command | `npm run build` |
+| Build output directory | `dist` |
+| Node.js | 从 `.node-version` 读取 |
+
+首次发布选择 **Save and Deploy**。部署成功后，从 **Deployments** 打开分配的 `pages.dev` HTTPS 地址。保持 `main` 的自动生产部署开启。每次推送到 `main` 后，在 **Deployments** 核对提交编号和构建状态。
+
+页面由 Vite 构建为单页静态站点，发布在域名根路径。MediaPipe 模型和 WASM 都从本站加载。每个标签页分别创建游戏场景，刷新会开始新一轮。访客打开网页即可使用鼠标，摄像头在主动点击并授权后启用。展览模式可以在地址后加 `?exhibit=1`，并用浏览器全屏功能展示。
+
+目前无需环境变量或服务端。未来如果接入 AI，可以让浏览器请求同源的 Pages Functions `/api/` 路径，并在 Cloudflare 的服务端密钥配置中保存 API 密钥。
 
 ## 模块
 
@@ -57,4 +75,3 @@ npm.cmd run preview
 - 五条反应由规则表配置。每只小鸡可吃十条虫子，睡着后也能长大。闪电会留在场内，同一只乌龟可以再次碰到它并加速，每一对乌龟和闪电之间有反应冷却。
 - 握拳时会短暂保持原来的瞄准点。拖动 Emoji 后立刻松手可以把它抛出，停稳后松手则会自然下落。
 - Phase 4 基于 `CapsuleResult` 扩展卡片、出口动画与导出。Phase 5 完成展馆视觉、全屏和闲置恢复，并按场地校准。
-
