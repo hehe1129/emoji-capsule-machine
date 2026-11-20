@@ -1,0 +1,15 @@
+node_modules/
+dist/
+.playwright-cli/
+.taste-skill/
+.wrangler/
+*.log
+.env
+.env.*
+.dev.vars
+.dev.vars.*
+.npmrc
+*.pem
+*.key
+*.p12
+*.pfx
