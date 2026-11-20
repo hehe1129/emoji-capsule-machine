@@ -38,7 +38,7 @@ async function start() {
   const input = new InputManager((action) => {
     if (action.type === 'cancel') {
       app.release()
-      ui.showCursor()
+      ui.cancelCursor(action.position)
       return
     }
     const handAction = action.type === 'grab' ? 'activate' : action.pressed ? undefined : 'aim'
@@ -103,6 +103,7 @@ async function start() {
   ui.ready()
   let previous = performance.now()
   function frame(now: number) {
+    input.update(now)
     app.tick(now - previous)
     previous = now
     scene.render(app.entities, app.heldId)

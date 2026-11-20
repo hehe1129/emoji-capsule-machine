@@ -237,6 +237,11 @@ export class UIManager {
     return { point, command, lane, inside, control }
   }
 
+  cancelCursor(point?: Point) {
+    this.lastButtonAim = undefined
+    this.showCursor(point)
+  }
+
   showCursor(point?: Point, pressed = false, control?: HTMLButtonElement | null) {
     if (this.hoveredControl !== control) {
       this.hoveredControl?.removeAttribute('data-gesture-hover')

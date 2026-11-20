@@ -31,6 +31,7 @@ export interface HandObservation {
 const dwellMs: Record<Gesture, number> = { open: 50, fist: 45 }
 const evidenceGapMs = 125
 const lossGraceMs = 240
+const cursorGraceMs = 420
 const lost: InputSample = { position: { x: 0, y: 0 }, gesture: 'lost' }
 
 function normalizeAxis(value: number, margin: number, center = 0.5) {
@@ -56,10 +57,12 @@ export class GestureFilter {
   private lastSeen = -Infinity
   private lastPose = -Infinity
   private lastOpen = -Infinity
+  private trackingInterrupted = false
 
   observe(observation: HandObservation | undefined, now: number, config: HandCalibration): InputSample | undefined {
     if (!observation) return this.expire(now)
-    if (now - this.lastSeen >= lossGraceMs) this.reset()
+    if (now - this.lastSeen >= lossGraceMs) this.resetPose()
+    this.trackingInterrupted = false
     this.lastSeen = now
     const { position } = observation
     const pose = classify(observation, config.confidence)
@@ -105,18 +108,28 @@ export class GestureFilter {
   }
 
   expire(now: number) {
-    if (now - this.lastSeen < lossGraceMs) return
-    return this.reset()
+    const gap = now - this.lastSeen
+    if (gap >= cursorGraceMs) return this.reset()
+    if (gap < lossGraceMs || this.trackingInterrupted) return
+    // Release a held item on schedule, but keep the cursor parked through brief tracking loss.
+    this.resetPose()
+    this.trackingInterrupted = true
+    return { ...lost, retainCursor: true }
+  }
+
+  private resetPose() {
+    this.stable = undefined
+    this.armed = false
+    this.pending = undefined
+    this.lastPose = -Infinity
+    this.lastOpen = -Infinity
   }
 
   reset() {
     const wasTracking = this.lastSeen !== -Infinity
-    this.stable = undefined
-    this.armed = false
-    this.pending = undefined
+    this.resetPose()
     this.lastSeen = -Infinity
-    this.lastPose = -Infinity
-    this.lastOpen = -Infinity
+    this.trackingInterrupted = false
     return wasTracking ? lost : undefined
   }
 }
