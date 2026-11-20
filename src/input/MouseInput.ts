@@ -24,7 +24,7 @@ export class MouseInput implements InputSource {
       if (pointer !== undefined && this.surface.hasPointerCapture(pointer)) {
         this.surface.releasePointerCapture(pointer)
       }
-      emit({ position: { x: 0, y: 0 }, gesture: 'lost' })
+      emit({ gesture: 'lost' })
     }
 
     this.surface.addEventListener('pointerdown', (event) => {

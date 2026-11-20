@@ -1,11 +1,10 @@
 export type Point = { x: number; y: number }
 export type InputSample = {
   position: Point
-  gesture: 'hover' | 'open' | 'fist' | 'lost'
+  gesture: 'hover' | 'open' | 'fist'
   sampledAt?: number
   holdPosition?: boolean
-  retainCursor?: boolean
-}
+} | { gesture: 'lost'; trackingTimeout?: { at: number; hidden: boolean } }
 
 export interface InputSource {
   connect(emit: (sample: InputSample) => void): () => void
@@ -18,7 +17,9 @@ export type InputAction = {
 } | { type: 'cancel'; position?: Point; pressed: false }
 
 const displayFrameMs = 1000 / 60
-const maxCursorSpeed = 0.006 // normalized units per millisecond
+const maxCursorSpeed = 0.0036 // normalized units per millisecond
+const largeSampleJump = 0.18 // normalized distance between camera observations
+const resumeAfterHideMs = 650
 
 // Sources deliver normalized surface coordinates. Smoothing and transitions
 // belong here so a camera can drive the same controls as a mouse.
@@ -28,6 +29,9 @@ export class InputManager {
   private pressed = false
   private fistAnchor?: { offset: Point; previous: Point; remaining: number }
   private cameraTarget?: Point
+  private lastCameraPoint?: Point
+  private suspectCameraPoint?: Point
+  private resumeUntil?: number
   private frameAt?: number
 
   constructor(
@@ -41,7 +45,8 @@ export class InputManager {
   }
 
   update(now: number) {
-    const elapsed = Math.min(now - (this.frameAt ?? now), 2 * displayFrameMs)
+    // A delayed paint gets the same travel budget as a normal frame.
+    const elapsed = Math.min(now - (this.frameAt ?? now), displayFrameMs)
     this.frameAt = now
     const target = this.cameraTarget
     if (!target || !this.position || elapsed <= 0) return
@@ -58,16 +63,31 @@ export class InputManager {
     this.send({ position: this.position, type: 'move', pressed: this.pressed })
   }
 
-  private accept({ position, gesture, sampledAt, holdPosition, retainCursor }: InputSample) {
+  private accept(sample: InputSample) {
+    const { gesture } = sample
     if (gesture === 'lost') {
-      if (!retainCursor) this.position = undefined
+      const timeout = sample.trackingTimeout
+      if (timeout?.hidden && this.position) this.resumeUntil = timeout.at + resumeAfterHideMs
+      if (!timeout) {
+        this.position = undefined
+        this.resumeUntil = undefined
+      }
       this.pressed = false
       this.fistAnchor = undefined
       this.cameraTarget = undefined
-      this.send({ position: this.position, type: 'cancel', pressed: false })
+      this.lastCameraPoint = undefined
+      this.suspectCameraPoint = undefined
+      this.send({ position: timeout?.hidden ? undefined : this.position, type: 'cancel', pressed: false })
       return
     }
 
+    let { position } = sample
+    const { sampledAt, holdPosition } = sample
+    const resumeUntil = this.resumeUntil
+    if (resumeUntil !== undefined) {
+      if (sampledAt === undefined || sampledAt > resumeUntil) this.position = undefined
+      this.resumeUntil = undefined
+    }
     const pressed = gesture === 'fist'
     const changed = pressed !== this.pressed
     const camera = sampledAt !== undefined
@@ -96,8 +116,14 @@ export class InputManager {
 
     if (camera) {
       // The display loop follows the latest sample and never jumps ahead of it.
-      this.cameraTarget = lockPosition ? undefined : position
-      if (this.position && !changed) return
+      if (lockPosition) {
+        this.cameraTarget = undefined
+        this.lastCameraPoint = undefined
+        this.suspectCameraPoint = undefined
+      } else {
+        this.cameraTarget = this.confirmCameraPoint(position)
+      }
+      if (this.position && !changed && resumeUntil === undefined) return
       this.position ??= position
     } else if (!this.position || changed) {
       this.position = position
@@ -115,5 +141,25 @@ export class InputManager {
     } else {
       this.send({ position: this.position, type: changed ? (pressed ? 'grab' : 'release') : 'move', pressed })
     }
+  }
+
+  private confirmCameraPoint(point: Point): Point {
+    const previous = this.lastCameraPoint
+    if (previous) {
+      const dx = point.x - previous.x
+      const dy = point.y - previous.y
+      if (Math.hypot(dx, dy) >= largeSampleJump) {
+        const suspect = this.suspectCameraPoint
+        this.suspectCameraPoint = point
+        if (!suspect) return previous
+        const sx = suspect.x - previous.x
+        const sy = suspect.y - previous.y
+        // A second observation must still be displaced in the same direction.
+        if (dx * sx + dy * sy < (sx * sx + sy * sy) / 2) return previous
+      }
+    }
+    this.suspectCameraPoint = undefined
+    this.lastCameraPoint = point
+    return point
   }
 }

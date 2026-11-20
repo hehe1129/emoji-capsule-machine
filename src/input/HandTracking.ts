@@ -94,8 +94,7 @@ export class HandTracking implements InputSource {
       if (stopped()) return
       events.abort()
       cancelAnimationFrame(frame)
-      const lost = filter.reset()
-      if (lost) emit(lost)
+      emit(filter.reset())
       video.pause()
       video.srcObject = null
       this.onPreview()

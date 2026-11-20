@@ -32,7 +32,6 @@ const dwellMs: Record<Gesture, number> = { open: 50, fist: 45 }
 const evidenceGapMs = 125
 const lossGraceMs = 240
 const cursorGraceMs = 420
-const lost: InputSample = { position: { x: 0, y: 0 }, gesture: 'lost' }
 
 function normalizeAxis(value: number, margin: number, center = 0.5) {
   const span = 1 - 2 * margin
@@ -107,14 +106,18 @@ export class GestureFilter {
     }
   }
 
-  expire(now: number) {
+  expire(now: number): InputSample | undefined {
+    if (this.lastSeen === -Infinity) return
     const gap = now - this.lastSeen
-    if (gap >= cursorGraceMs) return this.reset()
+    if (gap >= cursorGraceMs) {
+      this.reset()
+      return { gesture: 'lost', trackingTimeout: { at: now, hidden: true } }
+    }
     if (gap < lossGraceMs || this.trackingInterrupted) return
     // Release a held item on schedule, but keep the cursor parked through brief tracking loss.
     this.resetPose()
     this.trackingInterrupted = true
-    return { ...lost, retainCursor: true }
+    return { gesture: 'lost', trackingTimeout: { at: now, hidden: false } }
   }
 
   private resetPose() {
@@ -125,11 +128,10 @@ export class GestureFilter {
     this.lastOpen = -Infinity
   }
 
-  reset() {
-    const wasTracking = this.lastSeen !== -Infinity
+  reset(): InputSample {
     this.resetPose()
     this.lastSeen = -Infinity
     this.trackingInterrupted = false
-    return wasTracking ? lost : undefined
+    return { gesture: 'lost' }
   }
 }
