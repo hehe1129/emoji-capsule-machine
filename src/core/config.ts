@@ -1,5 +1,14 @@
-export const arena = { width: 1200, height: 440, radius: 24 }
-export const hatchStart = 0.77
+export const cabinet = {
+  width: 1600,
+  height: 900,
+  chamber: { x: 45, y: 305, width: 1355, height: 360 },
+  tray: { x: 948, y: 665, width: 452, height: 208 },
+  tubeWidth: 94,
+  tubeCenters: [395, 615, 835, 1055, 1275],
+} as const
+export const arena = { width: cabinet.chamber.width, height: cabinet.chamber.height, radius: 30 }
+export const hatchX = cabinet.tray.x - cabinet.chamber.x
+export const tubeCenters = cabinet.tubeCenters.map(x => x - cabinet.chamber.x)
 export const shakeDuration = 3000
 
 export const settingsSchema = {

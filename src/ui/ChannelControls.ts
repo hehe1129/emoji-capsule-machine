@@ -1,25 +1,25 @@
-import { catalog, type EmojiKind } from '../emoji/catalog'
-import { emojiImage } from '../emoji/emojiImage'
+import { cabinet } from '../core/config'
 import type { EmojiChannels } from '../emoji/EmojiChannels'
+import { placeOnCabinet } from './placement'
 
 type Source = number | 'key' | 'hand'
 
 export class ChannelControls {
-  private readonly lanes: { shell: HTMLElement; stack: HTMLElement; button: HTMLButtonElement; stock?: EmojiKind[] }[] = []
+  private readonly lanes: { shell: HTMLElement; button: HTMLButtonElement }[] = []
   private readonly held = new Map<number, Source>()
 
   constructor(host: HTMLElement, private readonly channels: EmojiChannels) {
-    channels.lanes.forEach((_, index) => {
+    cabinet.tubeCenters.forEach((center, index) => {
       const shell = document.createElement('div')
       shell.className = 'channel'
+      placeOnCabinet(shell, { x: center - cabinet.tubeWidth / 2, y: 0,
+        width: cabinet.tubeWidth, height: cabinet.chamber.y })
       const tube = document.createElement('div')
       tube.className = 'tube'
       tube.setAttribute('aria-hidden', 'true')
-      const stack = document.createElement('div')
-      stack.className = 'channel-stock'
       const gate = document.createElement('span')
       gate.className = 'channel-gate'
-      tube.append(stack, gate)
+      gate.setAttribute('aria-hidden', 'true')
       const button = document.createElement('button')
       button.type = 'button'
       button.className = 'channel-button'
@@ -43,15 +43,14 @@ export class ChannelControls {
         if (event.key === ' ' || event.key === 'Enter') this.release(index, 'key')
       })
       button.addEventListener('blur', () => this.release(index, 'key'))
-      shell.append(tube, button)
+      shell.append(tube, gate, button)
       host.append(shell)
-      this.lanes.push({ shell, stack, button })
+      this.lanes.push({ shell, button })
     })
     window.addEventListener('blur', () => this.cancelAll())
     document.addEventListener('visibilitychange', () => {
       if (document.hidden) this.cancelAll()
     })
-    this.render()
   }
 
   ready() {
@@ -62,7 +61,7 @@ export class ChannelControls {
     if (this.lanes[index].button.disabled || this.held.has(index)) return false
     this.held.set(index, source)
     this.channels.press(index, performance.now())
-    this.setOpen(index, true)
+    this.setPressed(index, true)
     return true
   }
 
@@ -74,35 +73,20 @@ export class ChannelControls {
     for (const [index, source] of this.held) this.release(index, source)
   }
 
-  render() {
-    this.channels.lanes.forEach(({ stock }, index) => {
-      const visual = this.lanes[index]
-      if (visual.stock === stock) return
-      if (visual.stock) {
-        visual.stack.lastElementChild?.remove()
-        visual.stack.prepend(emojiImage(catalog[stock[0]].art, 'channel-art'))
-        if (!matchMedia('(prefers-reduced-motion: reduce)').matches) {
-          visual.stack.getAnimations().forEach(animation => animation.cancel())
-          visual.stack.animate([{ transform: 'translateY(-25%)' }, { transform: 'translateY(0)' }],
-            { duration: 180, easing: 'cubic-bezier(0.23, 1, 0.32, 1)' })
-        }
-      } else {
-        visual.stack.replaceChildren(...stock.map(kind => emojiImage(catalog[kind].art, 'channel-art')))
-      }
-      visual.stock = stock
-    })
+  render(gateOpen: (index: number) => boolean) {
+    this.lanes.forEach(({ shell }, index) => shell.toggleAttribute('data-open', gateOpen(index)))
   }
 
   private release(index: number, source: Source) {
     if (this.held.get(index) !== source) return
     this.held.delete(index)
     this.channels.release(index)
-    this.setOpen(index, false)
+    this.setPressed(index, false)
   }
 
-  private setOpen(index: number, open: boolean) {
+  private setPressed(index: number, open: boolean) {
     const { shell, button } = this.lanes[index]
-    shell.toggleAttribute('data-open', open)
+    shell.toggleAttribute('data-pressed', open)
     button.setAttribute('aria-pressed', String(open))
   }
 }

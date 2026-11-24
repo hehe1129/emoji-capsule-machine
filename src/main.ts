@@ -18,14 +18,16 @@ async function start() {
     () => app.shake(performance.now()), take)
   const scene = new SceneRenderer()
   let exporting = false
+  const gateOpen = (index: number) => app.gateOpen(index)
 
   function refresh() {
-    ui.update(app.shaking, app.retained, app.notice, exporting)
+    ui.update(app.shaking, app.retainedCount, app.notice, exporting, gateOpen)
   }
 
   async function take() {
-    if (exporting || app.retained.length === 0) return
-    const captured = [...app.retained]
+    if (exporting) return
+    const captured = app.capture()
+    if (captured.length === 0) return
     exporting = true
     refresh()
     try {
@@ -44,7 +46,7 @@ async function start() {
   }
 
   try {
-    await scene.init(ui.playfield)
+    await scene.init(ui.cabinet)
   } catch (error) {
     console.error(error)
     ui.error('渲染初始化失败，请重启浏览器或检查硬件加速。')
@@ -131,7 +133,7 @@ async function start() {
   let previous = performance.now()
   function frame(now: number) {
     input.update(now)
-    channels.tick(now, (kind, lane) => app.drop(kind, lane))
+    channels.tick(now, index => app.releaseChannel(index))
     app.tick(now, now - previous)
     previous = now
     scene.render(app.entities, app.heldId)

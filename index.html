@@ -4,15 +4,15 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta http-equiv="Content-Security-Policy" content="connect-src 'self'">
-    <meta name="theme-color" content="#e9e6f3">
+    <meta name="theme-color" content="#9991ec">
     <link rel="icon" href="data:,">
     <title>扭蛋黄</title>
   </head>
   <body>
     <main class="machine" id="machine">
       <div class="cabinet" id="cabinet">
-        <div class="fasteners" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
-        <h1 class="brand"><img src="%BASE_URL%art/dot-title.svg" alt="扭蛋黄" width="222" height="70"></h1>
+        <div class="fastener" aria-hidden="true"></div>
+        <h1 class="brand" aria-label="扭蛋黄"></h1>
         <div class="operator-controls" data-native>
           <button id="camera-toggle" type="button" aria-label="启用摄像头" title="启用摄像头" aria-pressed="false" disabled>
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
@@ -64,9 +64,8 @@
         </div>
         <div class="vents" aria-hidden="true"></div>
 
-        <section class="collector" aria-label="抽取结果滞留区">
+        <section class="collector" id="collector" aria-label="抽取结果滞留区">
           <div class="retention-gate" id="retention-gate" aria-hidden="true"></div>
-          <div class="retention" id="retention"></div>
         </section>
         <button id="take" class="take" type="button" data-native data-hand disabled>带走！</button>
         <p id="notice" class="sr-only" role="status"></p>
@@ -75,13 +74,12 @@
     </main>
     <dialog id="souvenir" aria-labelledby="souvenir-title">
       <h2 id="souvenir-title" class="sr-only">扭蛋黄纪念卡</h2>
-      <img id="souvenir-preview" alt="本次抽取纪念图">
       <div class="souvenir-controls">
         <button id="close-card" type="button" data-hand>关闭</button>
         <a id="save-card" data-hand download="扭蛋黄-纪念卡.png">下载 PNG</a>
       </div>
     </dialog>
-    <footer class="credits"><a href="https://googlefonts.github.io/noto-emoji-animation/">Noto Animated Emoji · Google</a> / <a href="https://creativecommons.org/licenses/by/4.0/">CC BY 4.0</a></footer>
+    <footer class="credits sr-only"><a href="https://github.com/jdecked/twemoji" tabindex="-1">Twemoji · Twitter, Inc. 和贡献者</a> / <a href="https://creativecommons.org/licenses/by/4.0/" tabindex="-1">CC BY 4.0</a></footer>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

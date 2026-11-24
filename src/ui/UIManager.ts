@@ -1,12 +1,11 @@
-import { arena, hatchStart, settingsSchema, type Settings } from '../core/config'
-import { emojiImage } from '../emoji/emojiImage'
-import type { CapsuleResult } from '../capsule/CapsuleResult'
+import { arena, cabinet, hatchX, settingsSchema, type Settings } from '../core/config'
 import type { Point } from '../input/InputManager'
 import type { HandCalibration } from '../input/GestureFilter'
 import type { HandStatus } from '../input/HandTracking'
 import type { CameraDevice } from '../input/CameraCapture'
 import { CapsuleLever } from './CapsuleLever'
 import { ChannelControls } from './ChannelControls'
+import { placeOnCabinet } from './placement'
 import type { EmojiChannels } from '../emoji/EmojiChannels'
 
 const buttonGraceMs = 220
@@ -37,11 +36,10 @@ export class UIManager {
   readonly lever: CapsuleLever
   readonly channels: ChannelControls
   readonly take = element<HTMLButtonElement>('take')
-  private readonly cabinet = element('cabinet')
+  readonly cabinet = element('cabinet')
   private readonly gate = element('retention-gate')
-  private readonly retention = element('retention')
   private readonly souvenir = element<HTMLDialogElement>('souvenir')
-  private readonly cardPreview = element<HTMLImageElement>('souvenir-preview')
+  private readonly cardPreview = new Image()
   private readonly download = element<HTMLAnchorElement>('save-card')
   private readonly cursor = element('cursor')
   private readonly cameraToggle = element<HTMLButtonElement>('camera-toggle')
@@ -50,7 +48,6 @@ export class UIManager {
   private readonly handReconnect = element<HTMLButtonElement>('hand-reconnect')
   private readonly handDevice = element<HTMLSelectElement>('hand-device')
   private readonly notice = element('notice')
-  private displayed: CapsuleResult[] = []
   private hoveredControl?: HTMLElement
   private lastButtonAim?: { control: HTMLElement; time: number }
   private cardUrl?: string
@@ -62,7 +59,15 @@ export class UIManager {
     onShake: () => void,
     onTake: () => void,
   ) {
-    this.cabinet.style.setProperty('--hatch-start', String(hatchStart))
+    placeOnCabinet(this.playfield, cabinet.chamber)
+    placeOnCabinet(element('collector'), cabinet.tray)
+    this.playfield.style.setProperty('--hatch-start', hatchX / arena.width * 100 + '%')
+    const cuts = cabinet.tubeCenters.map(x => {
+      const left = (x - cabinet.chamber.x - cabinet.tubeWidth / 2) / arena.width * 100
+      const right = left + cabinet.tubeWidth / arena.width * 100
+      return `var(--ink) ${left}%, transparent ${left}% ${right}%, var(--ink) ${right}%`
+    })
+    this.playfield.style.setProperty('--roof', `linear-gradient(to right, ${cuts.join(', ')})`)
     this.channels = new ChannelControls(element('channels'), channels)
     this.lever = new CapsuleLever(element<HTMLButtonElement>('draw'), onShake)
     this.take.addEventListener('click', onTake)
@@ -72,7 +77,7 @@ export class UIManager {
       this.cancelCursor()
       if (this.cardUrl) URL.revokeObjectURL(this.cardUrl)
       this.cardUrl = undefined
-      this.cardPreview.removeAttribute('src')
+      this.cardPreview.remove()
       this.download.removeAttribute('href')
     })
     const debug = element('debug')
@@ -116,8 +121,11 @@ export class UIManager {
   showCard(blob: Blob) {
     if (this.cardUrl) URL.revokeObjectURL(this.cardUrl)
     this.cardUrl = URL.createObjectURL(blob)
+    this.cardPreview.id = 'souvenir-preview'
+    this.cardPreview.alt = '本次抽取纪念图'
     this.cardPreview.src = this.download.href = this.cardUrl
     if (!this.souvenir.open) {
+      this.souvenir.prepend(this.cardPreview)
       this.souvenir.showModal()
       this.souvenir.append(this.cursor)
       this.cancelCursor()
@@ -266,42 +274,12 @@ export class UIManager {
     this.cursor.classList.toggle('pressed', pressed)
   }
 
-  update(shaking: boolean, retained: readonly CapsuleResult[], notice: string, exporting: boolean) {
-    this.channels.render()
+  update(shaking: boolean, retained: number, notice: string, exporting: boolean, gateOpen: (index: number) => boolean) {
+    this.channels.render(gateOpen)
     this.cabinet.toggleAttribute('data-shaking', shaking)
     this.gate.toggleAttribute('data-open', shaking)
     this.lever.button.disabled = shaking
-    this.take.disabled = exporting || retained.length === 0
+    this.take.disabled = exporting || retained === 0
     if (this.notice.textContent !== notice) this.notice.textContent = notice
-    if (retained.length === this.displayed.length && retained.every((item, i) => item === this.displayed[i])) return
-    const columns = Math.max(1, Math.ceil(Math.sqrt(retained.length * 3.5)))
-    this.retention.style.setProperty('--columns', String(columns))
-    this.retention.style.setProperty('--rows', String(Math.max(1, Math.ceil(retained.length / columns))))
-    const existing = new Map(this.displayed.map((item, i) => [item, this.retention.children[i]]))
-    const arrivals: { element: HTMLElement; x: number }[] = []
-    this.retention.replaceChildren(...retained.map(result => {
-      const previous = existing.get(result)
-      if (previous) return previous
-      const { art, badge, name, exitX } = result
-      const element = document.createElement('div')
-      element.className = 'retained-token'
-      element.append(emojiImage(art, 'retained-art', name))
-      if (badge) element.append(emojiImage(badge, 'retained-badge'))
-      arrivals.push({ element, x: exitX })
-      return element
-    }))
-    this.displayed = [...retained]
-    if (arrivals.length && !matchMedia('(prefers-reduced-motion: reduce)').matches) {
-      const floor = this.playfield.getBoundingClientRect()
-      const offsets = arrivals.map(({ element, x }) => {
-        const target = element.getBoundingClientRect()
-        return { element, dx: floor.left + floor.width * x - target.x - target.width / 2,
-          dy: floor.bottom - target.y - target.height / 2 }
-      })
-      for (const { element, dx, dy } of offsets) {
-        element.animate([{ transform: `translate(${dx}px, ${dy}px)` }, { transform: 'translate(0, 0)' }],
-          { duration: 220, easing: 'cubic-bezier(0.23, 1, 0.32, 1)' })
-      }
-    }
   }
 }

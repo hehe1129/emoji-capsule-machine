@@ -24,16 +24,16 @@ export async function createSouvenir(items: readonly CapsuleResult[]): Promise<B
   const context = canvas.getContext('2d')
   if (!context) throw new Error('Canvas unavailable')
   const { width, height } = canvas
-  context.fillStyle = '#b7a3f0'
+  context.fillStyle = '#9991e9'
   context.fillRect(0, 0, width, height)
-  context.fillStyle = '#dceaff'
+  context.fillStyle = '#c9d7f6'
   context.fillRect(36, 36, width - 72, height - 72)
-  context.strokeStyle = '#33234f'
+  context.strokeStyle = '#211932'
   context.lineWidth = 4
   context.strokeRect(36, 36, width - 72, height - 72)
   const title = await loadImage(import.meta.env.BASE_URL + 'art/dot-title.svg')
   context.drawImage(title, 350, 66, 260, 260 * title.naturalHeight / title.naturalWidth)
-  context.fillStyle = '#33234f'
+  context.fillStyle = '#211932'
   context.textAlign = 'center'
   context.font = '22px system-ui, sans-serif'
   context.fillText('本次抽取结果', width / 2, 190)

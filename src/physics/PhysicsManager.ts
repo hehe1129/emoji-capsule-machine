@@ -1,5 +1,5 @@
 import Matter from 'matter-js'
-import { arena, hatchStart, type Settings } from '../core/config'
+import { arena, cabinet, hatchX, tubeCenters, type Settings } from '../core/config'
 import type { Point } from '../input/InputManager'
 
 const { Bodies, Body, Composite, Engine, Events } = Matter
@@ -8,7 +8,10 @@ const maxSpeed = 24
 const matterVelocityStep = 1000 / 60
 const followSpeed = 1650 // scene units per second
 const followTimeMs = 45
-const floorOpening = arena.width * hatchStart
+const tubeTop = -cabinet.chamber.y - arena.radius * 3
+const trayBottom = arena.height + cabinet.tray.height
+const wall = { isStatic: true, friction: 0.05 }
+const gateCategory = (index: number) => 1 << (index + 1)
 
 function withinArena(point: Point, radius: number) {
   return {
@@ -20,21 +23,37 @@ function withinArena(point: Point, radius: number) {
 export class PhysicsManager {
   private readonly engine = Engine.create({ positionIterations: 8 })
   private readonly collisions: [Matter.Body, Matter.Body][] = []
-  private readonly hatch = Bodies.rectangle((floorOpening + arena.width) / 2, arena.height + 75,
-    arena.width - floorOpening, 150, { isStatic: true, friction: 0.05 })
+  private readonly hatch = Bodies.rectangle((hatchX + arena.width) / 2, arena.height + 5,
+    arena.width - hatchX, 10, wall)
   private hatchOpen = false
 
   constructor() {
     const { width, height } = arena
-    const wall = { isStatic: true, friction: 0.05 }
-    const thickness = 150
+    const thickness = 30
     Composite.add(this.engine.world, [
-      Bodies.rectangle(width / 2, -thickness / 2, width + thickness * 2, thickness, wall),
-      Bodies.rectangle((floorOpening - thickness) / 2, height + thickness / 2, floorOpening + thickness, thickness, wall),
+      Bodies.rectangle((hatchX - thickness) / 2, height + thickness / 2, hatchX + thickness, thickness, wall),
       Bodies.rectangle(-thickness / 2, height / 2, thickness, height, wall),
-      Bodies.rectangle(width + thickness / 2, (height + thickness) / 2, thickness, height + thickness, wall),
+      Bodies.rectangle(width + thickness / 2, trayBottom / 2, thickness, trayBottom, wall),
+      Bodies.rectangle(hatchX - thickness / 2, height + cabinet.tray.height / 2, thickness, cabinet.tray.height, wall),
+      Bodies.rectangle((hatchX + width) / 2, trayBottom + thickness / 2, width - hatchX + thickness * 2, thickness, wall),
       this.hatch,
     ])
+    let roofStart = -thickness
+    tubeCenters.forEach((center, index) => {
+      const left = center - cabinet.tubeWidth / 2
+      const right = center + cabinet.tubeWidth / 2
+      Composite.add(this.engine.world, [
+        Bodies.rectangle((roofStart + left) / 2, -thickness / 2, left - roofStart, thickness, wall),
+        Bodies.rectangle(left - thickness / 2, tubeTop / 2, thickness, -tubeTop, wall),
+        Bodies.rectangle(right + thickness / 2, tubeTop / 2, thickness, -tubeTop, wall),
+        Bodies.rectangle(center, tubeTop - thickness / 2, cabinet.tubeWidth + thickness * 2, thickness, wall),
+        Bodies.rectangle(center, -5, cabinet.tubeWidth, 10,
+          { ...wall, collisionFilter: { category: gateCategory(index), mask: 1, group: 0 } }),
+      ])
+      roofStart = right
+    })
+    Composite.add(this.engine.world, Bodies.rectangle((roofStart + width + thickness) / 2, -thickness / 2,
+      width + thickness - roofStart, thickness, wall))
     Events.on(this.engine, 'collisionStart', ({ pairs }) => {
       for (const { bodyA, bodyB } of pairs) {
         if (!bodyA.isStatic && !bodyB.isStatic) this.collisions.push([bodyA, bodyB])
@@ -83,9 +102,8 @@ export class PhysicsManager {
     body.collisionFilter.mask = held ? 0 : 0xffffffff
   }
 
-  grow(body: Matter.Body, factor: number, radius: number) {
+  grow(body: Matter.Body, factor: number) {
     Body.scale(body, factor, factor)
-    this.move(body, body.position, radius)
   }
 
   launch(body: Matter.Body, velocity: Point) {
@@ -113,8 +131,14 @@ export class PhysicsManager {
     else Composite.add(this.engine.world, this.hatch)
   }
 
-  canExit(body: Matter.Body) {
-    return this.hatchOpen && !body.isStatic && body.position.x >= floorOpening && body.position.x <= arena.width
+  feed(body: Matter.Body, channel: number) {
+    // The escapement lets the bottom body through and supports the remaining stack.
+    body.collisionFilter.mask = 0xffffffff & ~gateCategory(channel)
+    Body.setVelocity(body, { x: body.velocity.x * 0.35, y: Math.max(body.velocity.y, 4.2) })
+  }
+
+  clearFeed(body: Matter.Body) {
+    if (!body.isStatic) body.collisionFilter.mask = 0xffffffff
   }
 
   shake(body: Matter.Body, phase: number) {
@@ -124,13 +148,15 @@ export class PhysicsManager {
     Body.setAngularVelocity(body, sideways * 0.014)
   }
 
-  contain(body: Matter.Body, radius: number) {
+  contain(body: Matter.Body, radius: number, channel?: number) {
     const point = body.position
     if (![point.x, point.y, body.angle, body.velocity.x, body.velocity.y].every(Number.isFinite)) {
       return 'invalid'
     }
-    if (point.x < 0 || point.x > arena.width || point.y < 0 || point.y > arena.height + (this.canExit(body) ? radius : 0)) {
-      this.move(body, { x: arena.width / 2, y: radius + 8 }, radius)
+    if (point.x < -radius || point.x > arena.width + radius || point.y < tubeTop - radius || point.y > trayBottom + radius) {
+      const recovery = channel === undefined ? { x: arena.width / 2, y: radius + 8 }
+        : { x: tubeCenters[channel], y: tubeTop + radius + 3 }
+      Body.setPosition(body, recovery)
       Body.setVelocity(body, { x: 0, y: 0 })
       Body.setAngularVelocity(body, 0)
       return 'recovered'
