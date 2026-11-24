@@ -1,11 +1,12 @@
 import type { EmojiEntity } from '../emoji/EmojiEntity'
-import { catalog } from '../emoji/catalog'
+import { catalog, type EmojiArt, type EmojiKind } from '../emoji/catalog'
 
 export interface CapsuleResult {
   entityId: number
-  glyph: string
+  art: EmojiArt
+  badge?: EmojiArt
   name: string
-  source?: string
+  source?: EmojiKind[]
 }
 
 export function drawCapsule(entities: Iterable<EmojiEntity>): CapsuleResult | undefined {
@@ -14,8 +15,9 @@ export function drawCapsule(entities: Iterable<EmojiEntity>): CapsuleResult | un
   if (!chosen) return
   return {
     entityId: chosen.body.id,
-    glyph: chosen.result ? chosen.result.glyph + (chosen.result.badge ?? '') : catalog[chosen.kind].glyph,
+    art: chosen.result?.art ?? catalog[chosen.kind].art,
+    badge: chosen.result?.badge,
     name: chosen.result?.name ?? catalog[chosen.kind].name,
-    source: chosen.result && [chosen.kind, ...chosen.result.ingredients].map(kind => catalog[kind].glyph).join(' + '),
+    source: chosen.result && [chosen.kind, ...chosen.result.ingredients],
   }
 }

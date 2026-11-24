@@ -42,7 +42,7 @@ export class ReactionEngine {
       actor.result = {
         name: counts.grow && counts.sleep ? '长大的小鸡（睡着了）' : rule.name,
         ingredients,
-        glyph: rule.glyph ?? catalog[actor.kind].glyph,
+        art: rule.art ?? catalog[actor.kind].art,
         badge: rule.badge ?? actor.result?.badge,
       }
       actor.reaction = { elapsed: 0, duration: rule.duration, effect: rule.effect }

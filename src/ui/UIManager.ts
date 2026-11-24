@@ -1,10 +1,12 @@
 import { arena, settingsSchema, type Settings } from '../core/config'
 import { catalog, emojiKinds } from '../emoji/catalog'
+import { emojiImage } from '../emoji/emojiImage'
 import type { CapsuleResult } from '../capsule/CapsuleResult'
 import type { Point } from '../input/InputManager'
 import type { HandCalibration } from '../input/GestureFilter'
 import type { HandStatus } from '../input/HandTracking'
 import type { CameraDevice } from '../input/CameraCapture'
+import { CapsuleLever } from './CapsuleLever'
 
 const initialNotice = '按住拖动，松手释放。试试让不同的 Emoji 相撞。'
 const buttonGraceMs = 220
@@ -37,6 +39,7 @@ export class UIManager {
   readonly playfield = element('playfield')
   private readonly palette = element('palette')
   private readonly draw = element<HTMLButtonElement>('draw')
+  readonly lever: CapsuleLever
   private readonly reset = element<HTMLButtonElement>('reset')
   private readonly cursor = element('cursor')
   private readonly cameraToggle = element<HTMLButtonElement>('camera-toggle')
@@ -62,15 +65,11 @@ export class UIManager {
     emojiKinds.forEach((kind, index) => {
       const item = catalog[kind]
       const button = document.createElement('button')
-      const glyph = document.createElement('span')
-      glyph.className = 'emoji-glyph'
-      glyph.setAttribute('aria-hidden', 'true')
-      glyph.textContent = item.glyph
       button.type = 'button'
       button.className = 'emoji-button'
       button.dataset.action = kind
       button.setAttribute('aria-label', '投放' + item.name)
-      button.append(glyph, item.name)
+      button.append(emojiImage(item.art, 'palette-art'), item.name)
       this.palette.append(button)
       this.buttons.push(button)
       button.disabled = true
@@ -78,12 +77,15 @@ export class UIManager {
         if (event.detail === 0) onCommand(kind, index / (emojiKinds.length - 1))
       })
     })
-    this.draw.addEventListener('click', (event) => {
-      if (event.detail === 0) onCommand('draw', 0)
-    })
+    this.lever = new CapsuleLever(this.draw, () => onCommand('draw', 0))
     this.reset.addEventListener('click', (event) => {
       if (event.detail === 0) onCommand('reset', 0)
     })
+    element('empty-emoji').append(
+      emojiImage(catalog.turtle.art, 'preview-turtle'),
+      emojiImage(catalog.chicken.art, 'preview-chick'),
+      emojiImage(catalog.heart.art, 'preview-heart'),
+    )
     const debug = element('debug')
     debug.hidden = new URLSearchParams(location.search).get('exhibit') === '1'
     for (const key of Object.keys(settingsSchema) as (keyof Settings)[]) {
@@ -217,7 +219,7 @@ export class UIManager {
       y: (y - field.top) / field.height * arena.height,
     }
     const hit = document.elementFromPoint(x, y)
-    const hitButton = hit?.closest<HTMLButtonElement>('button[data-action]')
+    const hitButton = hit?.closest<HTMLButtonElement>('button[data-action], #draw')
     let control = hitButton?.disabled ? undefined : hitButton ?? undefined
     const inside = !!hit && this.playfield.contains(hit)
     const now = performance.now()
@@ -234,7 +236,7 @@ export class UIManager {
     }
     const command = control?.dataset.action as Command | undefined
     const lane = control ? this.buttons.indexOf(control) / (emojiKinds.length - 1) : 0
-    return { point, command, lane, inside, control }
+    return { point, command, lane, inside, control, screenY: y }
   }
 
   cancelCursor(point?: Point) {
@@ -267,14 +269,24 @@ export class UIManager {
     if (result === this.previousResult) return
     this.previousResult = result
     for (const button of this.buttons) button.disabled = !!result
-    this.draw.hidden = !!result
+    this.draw.disabled = !!result
     this.reset.hidden = !result
     this.notice.hidden = !!result
     this.result.hidden = !result
     if (result) {
-      element('result-glyph').textContent = result.glyph
+      const portrait = emojiImage(result.art, 'result-portrait')
+      const images = result.badge ? [portrait, emojiImage(result.badge, 'result-badge')] : [portrait]
+      element('result-art').replaceChildren(...images)
       element('result-name').textContent = result.name
-      element('result-source').textContent = result.source ? '来自 ' + result.source : ''
+      const source = element('result-source')
+      source.replaceChildren()
+      if (result.source) {
+        source.append('来自')
+        result.source.forEach((kind, index) => {
+          if (index > 0) source.append('＋')
+          source.append(emojiImage(catalog[kind].art, 'source-art', catalog[kind].name))
+        })
+      }
       this.reset.focus({ preventScroll: true })
     } else {
       this.draw.focus({ preventScroll: true })

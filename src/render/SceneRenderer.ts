@@ -1,12 +1,19 @@
-import { Application, Container, Graphics, Text } from 'pixi.js'
+import { Application, Container, Graphics } from 'pixi.js'
 import { arena } from '../core/config'
-import { catalog } from '../emoji/catalog'
+import { catalog, type EmojiArt } from '../emoji/catalog'
+import { emojiImage } from '../emoji/emojiImage'
 import type { EmojiEntity } from '../emoji/EmojiEntity'
 import type { ReactionEffect } from '../reactions/ReactionRules'
 
-type Visual = { root: Container; text: Text; ring: Graphics; badge?: Text }
+type Visual = {
+  root: Container
+  ring: Graphics
+  token: HTMLDivElement
+  portrait: HTMLPictureElement
+  art: EmojiArt
+  badge?: HTMLPictureElement
+}
 
-const emojiFont = '"Segoe UI Emoji", "Apple Color Emoji", "Noto Color Emoji", sans-serif'
 const feedbackColors: Record<ReactionEffect, number> = {
   grow: 0xf9d856,
   sleep: 0x818cf8,
@@ -18,6 +25,7 @@ const feedbackColors: Record<ReactionEffect, number> = {
 export class SceneRenderer {
   private readonly app = new Application()
   private readonly visuals = new Map<number, Visual>()
+  private readonly emojiLayer = document.createElement('div')
 
   async init(host: HTMLElement) {
     await this.app.init({
@@ -29,7 +37,17 @@ export class SceneRenderer {
       autoStart: false,
     })
     this.app.canvas.setAttribute('aria-hidden', 'true')
-    host.prepend(this.app.canvas)
+    const layer = this.emojiLayer
+    layer.className = 'emoji-layer'
+    layer.setAttribute('aria-hidden', 'true')
+    layer.style.width = arena.width + 'px'
+    layer.style.height = arena.height + 'px'
+    host.prepend(layer, this.app.canvas)
+    const resize = () => {
+      layer.style.transform = 'scale(' + host.clientWidth / arena.width + ', ' + host.clientHeight / arena.height + ')'
+    }
+    new ResizeObserver(resize).observe(host)
+    resize()
   }
 
   render(entities: Iterable<EmojiEntity>, heldId?: number) {
@@ -44,24 +62,29 @@ export class SceneRenderer {
       const resting = !!entity.result?.badge
       const effect = reaction?.effect
       const sleepProgress = effect === 'sleep' ? progress : 1
-      const defaultGlyph = catalog[entity.kind].glyph
-      const glyph = progress >= 0.5 ? entity.result?.glyph ?? defaultGlyph : defaultGlyph
-      if (visual.text.text !== glyph) visual.text.text = glyph
-      visual.text.alpha = effect === 'soothe' || effect === 'brighten' ? 1 - pulse * 0.7 : 1
-      visual.text.rotation = body.angle + (resting ? (1 - (1 - sleepProgress) ** 2) * 0.3 : 0)
+      const defaultArt = catalog[entity.kind].art
+      const art = progress >= 0.5 ? entity.result?.art ?? defaultArt : defaultArt
+      if (visual.art !== art) {
+        const portrait = emojiImage(art, 'scene-portrait')
+        visual.portrait.replaceWith(portrait)
+        visual.portrait = portrait
+        visual.art = art
+      }
+      const opacity = effect === 'soothe' || effect === 'brighten' ? 1 - pulse * 0.7 : 1
+      const angle = body.angle + (resting ? (1 - (1 - sleepProgress) ** 2) * 0.3 : 0)
       const bounce = effect === 'grow' ? 0.08 : effect === 'brighten' ? 0.25 : 0
       const scale = radius / arena.radius * (1 + pulse * bounce)
-      visual.text.scale.set(scale)
+      const { x, y } = body.position
+      visual.token.style.transform = `translate(${x}px, ${y}px)`
+      visual.portrait.style.transform = `translate(-50%, -50%) rotate(${angle}rad) scale(${scale})`
+      visual.portrait.style.opacity = String(opacity)
       if (entity.result?.badge) {
         if (!visual.badge) {
-          visual.badge = visual.root.addChild(new Text({
-            text: entity.result.badge,
-            style: { fontFamily: emojiFont, fontSize: arena.radius * 0.7 },
-          }))
-          visual.badge.anchor.set(0.5)
+          visual.badge = emojiImage(entity.result.badge, 'scene-badge')
+          visual.token.append(visual.badge)
         }
-        visual.badge.alpha = Math.min(1, sleepProgress * 3)
-        visual.badge.position.set(radius * 0.78, -radius * 0.73 - Math.sin(sleepProgress * Math.PI) * 8)
+        visual.badge.style.opacity = String(Math.min(1, sleepProgress * 3))
+        visual.badge.style.transform = `translate(${radius * 0.48}px, ${-radius * 0.85 - Math.sin(sleepProgress * Math.PI) * 8}px)`
       }
       if (visual.ring.visible) visual.ring.clear()
       visual.ring.visible = !!effect || heldId === body.id
@@ -83,6 +106,7 @@ export class SceneRenderer {
     for (const [id, visual] of this.visuals) {
       if (visible.has(id)) continue
       visual.root.destroy({ children: true })
+      visual.token.remove()
       this.visuals.delete(id)
     }
     this.app.render()
@@ -92,17 +116,14 @@ export class SceneRenderer {
     const root = new Container()
     const ring = root.addChild(new Graphics())
     ring.visible = false
-    const text = root.addChild(new Text({
-      text: catalog[entity.kind].glyph,
-      style: {
-        fontFamily: emojiFont,
-        fontSize: arena.radius * 1.58,
-        padding: 5,
-      },
-    }))
-    text.anchor.set(0.5)
+    const art = catalog[entity.kind].art
+    const portrait = emojiImage(art, 'scene-portrait')
+    const token = document.createElement('div')
+    token.className = 'scene-token'
+    token.append(portrait)
+    this.emojiLayer.append(token)
     this.app.stage.addChild(root)
-    const visual = { root, ring, text }
+    const visual = { root, ring, token, portrait, art }
     this.visuals.set(entity.body.id, visual)
     return visual
   }

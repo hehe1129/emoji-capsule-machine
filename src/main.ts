@@ -38,6 +38,7 @@ async function start() {
   const input = new InputManager((action) => {
     if (action.type === 'cancel') {
       app.release()
+      ui.lever.cancelHand()
       ui.cancelCursor(action.position)
       return
     }
@@ -49,12 +50,15 @@ async function start() {
       cameraMode ? hit.control : undefined,
     )
     if (action.type === 'grab') {
+      if (cameraMode && hit.control === ui.lever.button && ui.lever.startHand(hit.screenY)) return
       if (hit.command) command(hit.command, hit.lane)
       else if (hit.inside) app.grab(hit.point)
     } else if (action.type === 'release') {
+      if (cameraMode && ui.lever.releaseHand()) return
       if (!cameraMode) app.drag(hit.point)
       app.release(true)
     } else if (action.pressed) {
+      if (cameraMode && ui.lever.moveHand(hit.screenY)) return
       app.drag(hit.point, cameraMode)
     }
   }, () => cameraMode ? calibration.smoothing : app.settings.smoothing)

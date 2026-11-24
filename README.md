@@ -15,7 +15,7 @@ npm.cmd ci
 npm.cmd run dev
 ```
 
-手动运行开发服务时，打开终端显示的地址，默认是 [http://localhost:5173/](http://localhost:5173/)。点击上方 Emoji 投放。按住容器里的 Emoji 拖动，松手后恢复物理模拟。有五组碰撞反应可试，分别是小鸡和虫子、小鸡和月亮、乌龟和闪电、生气脸和爱心、泪汪汪和太阳。也可以把其中一个拖到另一个上方再松开。点击「抽一颗扭蛋」从容器中的现有 Emoji 抽取，点击「开始新一轮」清空容器。抽取结果展示期间，场景暂停。
+手动运行开发服务时，打开终端显示的地址，默认是 [http://localhost:5173/](http://localhost:5173/)。点击上方 Emoji 投放。按住容器里的 Emoji 拖动，松手后恢复物理模拟。有五组碰撞反应可试，分别是小鸡和虫子、小鸡和月亮、乌龟和闪电、生气脸和爱心、泪汪汪和太阳。也可以把其中一个拖到另一个上方再松开。按住右侧摇杆向下拉，到位后松手即可抽取。手势模式下在摇杆上握拳、下拉并张手。键盘聚焦摇杆后可按 ↓。点击「开始新一轮」清空容器。抽取结果展示期间，场景暂停。
 
 右上角「调试设置」可实时调整重力、弹性、摩擦、容量、光标平滑、抓取容差和反应冷却。已放入的 Emoji 会保留，降低容量会限制之后的投放。使用 [展览预览参数](http://localhost:5173/?exhibit=1) 可隐藏调试入口。退出此预览时删掉 URL 参数即可。
 
@@ -35,7 +35,9 @@ npm.cmd run build
 npm.cmd run preview
 ```
 
-预览默认地址为 [http://localhost:4173/](http://localhost:4173/)。换电脑时可复制源码及锁文件，在新机器上运行 `npm.cmd ci` 并重新构建。也可以复制 `dist/`，通过目标电脑的本地静态 HTTP 服务提供文件。首次安装需要 npm 仓库访问。构建产物包含 MediaPipe WASM 和模型，运行时无需互联网。摄像头画面仅在浏览器本地处理，页面的连接策略会阻止 SDK 向外部发送使用指标。Emoji 由系统字体绘制，外观随系统而变化。
+预览默认地址为 [http://localhost:4173/](http://localhost:4173/)。换电脑时可复制源码及锁文件，在新机器上运行 `npm.cmd ci` 并重新构建。也可以复制 `dist/`，通过目标电脑的本地静态 HTTP 服务提供文件。首次安装需要 npm 仓库访问。构建产物包含 MediaPipe WASM、模型和表情素材，运行时无需互联网。摄像头画面仅在浏览器本地处理，页面的连接策略会阻止 SDK 向外部发送使用指标。
+
+表情来自 Google 的 [Noto Animated Emoji](https://googlefonts.github.io/noto-emoji-animation/)，使用 [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) 许可。`public/emoji/` 内的 WebP 由原素材缩放并减少动画帧数，保持循环时长。系统启用减少动态效果时使用同一素材的静态首帧。
 
 ## Cloudflare Pages 部署
 
@@ -65,7 +67,7 @@ npm.cmd run preview
 | `src/input/` | 摄像头采集、MediaPipe 推理、独立手势过滤和校准、光标平滑、鼠标指针捕获 |
 | `src/emoji/` | Emoji 目录和实体结构 |
 | `src/physics/PhysicsManager.ts` | Matter.js 固定步长、边界、抓取期间禁用碰撞、速度与越界保护 |
-| `src/render/SceneRenderer.ts` | PixiJS 渲染，Emoji 图像和反应特效与碰撞体分离 |
+| `src/render/SceneRenderer.ts` | 同步动画表情与物理坐标，用 PixiJS 渲染反应特效 |
 | `src/reactions/` | 匹配和管理配置化反应，记录结果来源、限制重复触发 |
 | `src/capsule/CapsuleResult.ts` | 基于本轮对象随机选取，生成结果数据 |
 

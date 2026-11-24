@@ -4,78 +4,88 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta http-equiv="Content-Security-Policy" content="connect-src 'self'">
-    <meta name="theme-color" content="#f6f2e9">
+    <meta name="theme-color" content="#e9e6f3">
     <link rel="icon" href="data:,">
     <title>扭蛋黄</title>
   </head>
   <body>
     <main class="machine" id="machine">
-      <header class="masthead">
-        <div class="brand">
-          <span class="brand-mark" aria-hidden="true"></span>
-          <h1>扭蛋黄</h1>
-        </div>
-        <div class="operator-controls" data-native>
-          <button id="camera-toggle" type="button" aria-pressed="false" disabled>启用摄像头</button>
-          <details id="debug">
-            <summary>调试设置</summary>
-            <div class="debug-panel">
-              <fieldset class="hand-settings">
-                <legend>手势校准</legend>
-                <p id="hand-status">摄像头未启动。</p>
-                <div id="hand-preview" class="hand-preview" hidden></div>
-                <label for="hand-device">摄像头设备</label>
-                <select id="hand-device">
-                  <option value="">系统默认</option>
-                </select>
-                <button id="hand-reconnect" type="button" disabled>连接摄像头</button>
-                <div id="hand-settings"></div>
-                <label><input id="hand-mirror" type="checkbox" checked> 水平镜像</label>
-              </fieldset>
-              <div id="settings"></div>
-            </div>
-          </details>
-          <p id="camera-status" role="status" hidden></p>
-        </div>
-      </header>
-
       <div class="cabinet">
-        <section class="hopper" aria-labelledby="hopper-title">
-          <div class="hopper-label">
-            <h2 id="hopper-title">投放 Emoji</h2>
-            <p>点选一个 Emoji</p>
+        <div class="fasteners" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
+        <header class="masthead">
+          <div class="brand">
+            <span class="brand-mark" aria-hidden="true"></span>
+            <h1>扭蛋黄</h1>
           </div>
+          <div class="operator-controls" data-native>
+            <button id="camera-toggle" type="button" aria-pressed="false" disabled>启用摄像头</button>
+            <details id="debug">
+              <summary>调试设置</summary>
+              <div class="debug-panel">
+                <fieldset class="hand-settings">
+                  <legend>手势校准</legend>
+                  <p id="hand-status">摄像头未启动。</p>
+                  <div id="hand-preview" class="hand-preview" hidden></div>
+                  <label for="hand-device">摄像头设备</label>
+                  <select id="hand-device">
+                    <option value="">系统默认</option>
+                  </select>
+                  <button id="hand-reconnect" type="button" disabled>连接摄像头</button>
+                  <div id="hand-settings"></div>
+                  <label><input id="hand-mirror" type="checkbox" checked> 水平镜像</label>
+                </fieldset>
+                <div id="settings"></div>
+              </div>
+            </details>
+            <p id="camera-status" role="status" hidden></p>
+          </div>
+        </header>
+
+        <section class="hopper" aria-labelledby="hopper-title">
+          <h2 id="hopper-title">投放 Emoji</h2>
           <div id="palette" class="palette"></div>
         </section>
 
-        <section class="chamber" aria-label="扭蛋容器">
-          <div class="chamber-bar">
-            <span>碰撞室</span>
-            <span id="count">0 / 120</span>
-          </div>
-          <div class="playfield" id="playfield" aria-label="按住容器里的 Emoji 拖动，松开让它落下">
-            <div id="empty" class="empty">
-              <div class="empty-capsule" aria-hidden="true"></div>
-              <p id="empty-message">正在启动扭蛋黄…</p>
+        <div class="machine-body">
+          <section class="chamber" aria-label="扭蛋容器">
+            <div class="chamber-bar">
+              <span>碰撞室</span>
+              <span id="count">0 / 120</span>
             </div>
-          </div>
-        </section>
+            <div class="playfield" id="playfield" aria-label="按住容器里的 Emoji 拖动，松开让它落下">
+              <div id="empty" class="empty">
+                <div id="empty-emoji" class="empty-emoji" aria-hidden="true"></div>
+                <p id="empty-message">正在启动扭蛋黄…</p>
+              </div>
+            </div>
+          </section>
+          <button id="draw" class="lever" type="button" data-native aria-keyshortcuts="ArrowDown" disabled>
+            <span class="lever-track" aria-hidden="true">
+              <span class="lever-base"></span>
+              <span class="lever-arm"><span class="lever-knob"></span></span>
+            </span>
+            <span class="lever-label">下拉抽扭蛋</span>
+          </button>
+        </div>
 
         <footer class="outlet">
-          <div class="outlet-copy">
-            <h2>扭蛋出口</h2>
-            <p id="notice" role="status">按住拖动，松手释放。让小鸡撞上虫子试试。</p>
-            <div class="result" id="result" role="status" hidden>
-              <span id="result-glyph" class="result-glyph" aria-hidden="true"></span>
-              <div><strong id="result-name"></strong><span id="result-source"></span></div>
+          <div class="outlet-slot">
+            <div class="outlet-copy">
+              <h2>扭蛋出口</h2>
+              <p id="notice" role="status">拖动 Emoji，松手释放。</p>
+              <div class="result" id="result" role="status" hidden>
+                <div id="result-art" class="result-art" aria-hidden="true"></div>
+                <div><strong id="result-name"></strong><span id="result-source"></span></div>
+              </div>
             </div>
+            <button id="reset" class="action" type="button" data-action="reset" hidden>开始新一轮 <span aria-hidden="true">↻</span></button>
           </div>
-          <button id="draw" class="action" type="button" data-action="draw" disabled>抽一颗扭蛋 <span aria-hidden="true">↗</span></button>
-          <button id="reset" class="action" type="button" data-action="reset" hidden>开始新一轮 <span aria-hidden="true">↻</span></button>
+          <div class="vents" aria-hidden="true"><i></i><i></i><i></i></div>
         </footer>
       </div>
       <div id="cursor" class="cursor" aria-hidden="true" hidden></div>
     </main>
+    <footer class="credits"><a href="https://googlefonts.github.io/noto-emoji-animation/">Noto Animated Emoji · Google</a> / <a href="https://creativecommons.org/licenses/by/4.0/">CC BY 4.0</a></footer>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

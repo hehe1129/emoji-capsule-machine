@@ -1,4 +1,4 @@
-import type { EmojiKind } from '../emoji/catalog'
+import { reactionArt, type EmojiArt, type EmojiKind } from '../emoji/catalog'
 
 export type ReactionEffect = 'grow' | 'sleep' | 'dash' | 'soothe' | 'brighten'
 
@@ -9,8 +9,8 @@ export interface ReactionRule {
   message: string
   effect: ReactionEffect
   duration: number
-  glyph?: string
-  badge?: string
+  art?: EmojiArt
+  badge?: EmojiArt
   maxUses?: number
   consumeIngredient?: boolean
   growth?: { steps: number; maxRadiusRatio: number }
@@ -25,7 +25,7 @@ export const reactionRules: readonly ReactionRule[] = [
   },
   {
     actor: 'chicken', ingredient: 'moon', name: '睡着的小鸡',
-    message: '月亮一出来，小鸡就睡着了。', effect: 'sleep', badge: '💤', motion: 'settle', duration: 950,
+    message: '月亮一出来，小鸡就睡着了。', effect: 'sleep', badge: reactionArt.asleep, motion: 'settle', duration: 950,
   },
   {
     actor: 'turtle', ingredient: 'lightning', name: '闪电乌龟',
@@ -34,10 +34,10 @@ export const reactionRules: readonly ReactionRule[] = [
   },
   {
     actor: 'angry', ingredient: 'heart', name: '平静下来的脸',
-    message: '收到爱心，气慢慢消了。', effect: 'soothe', glyph: '😌', duration: 800,
+    message: '收到爱心，气慢慢消了。', effect: 'soothe', art: reactionArt.calm, duration: 800,
   },
   {
     actor: 'sad', ingredient: 'sun', name: '破涕为笑的脸',
-    message: '太阳出来了，泪汪汪笑了。', effect: 'brighten', glyph: '😄', duration: 800,
+    message: '太阳出来了，泪汪汪笑了。', effect: 'brighten', art: reactionArt.happy, duration: 800,
   },
 ]
