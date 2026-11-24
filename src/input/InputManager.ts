@@ -1,7 +1,7 @@
 export type Point = { x: number; y: number }
 export type InputSample = {
   position: Point
-  gesture: 'hover' | 'open' | 'fist'
+  gesture: 'hover' | 'open' | 'pinch'
   sampledAt?: number
   holdPosition?: boolean
 } | { gesture: 'lost'; trackingTimeout?: { at: number; hidden: boolean } }
@@ -27,7 +27,7 @@ export class InputManager {
   private disconnect?: () => void
   private position?: Point
   private pressed = false
-  private fistAnchor?: { offset: Point; previous: Point; remaining: number }
+  private pinchAnchor?: { offset: Point; previous: Point; remaining: number }
   private cameraTarget?: Point
   private lastCameraPoint?: Point
   private suspectCameraPoint?: Point
@@ -73,7 +73,7 @@ export class InputManager {
         this.resumeUntil = undefined
       }
       this.pressed = false
-      this.fistAnchor = undefined
+      this.pinchAnchor = undefined
       this.cameraTarget = undefined
       this.lastCameraPoint = undefined
       this.suspectCameraPoint = undefined
@@ -88,24 +88,24 @@ export class InputManager {
       if (sampledAt === undefined || sampledAt > resumeUntil) this.position = undefined
       this.resumeUntil = undefined
     }
-    const pressed = gesture === 'fist'
+    const pressed = gesture === 'pinch'
     const changed = pressed !== this.pressed
     const camera = sampledAt !== undefined
     if (camera && changed && pressed && this.position) {
-      this.fistAnchor = {
+      this.pinchAnchor = {
         offset: { x: this.position.x - position.x, y: this.position.y - position.y },
         previous: position,
         remaining: 1,
       }
     } else if (!pressed) {
-      this.fistAnchor = undefined
+      this.pinchAnchor = undefined
     }
 
     const lockPosition = camera && (changed || holdPosition)
-    if (this.fistAnchor && !lockPosition) {
-      const anchor = this.fistAnchor
+    if (this.pinchAnchor && !lockPosition) {
+      const anchor = this.pinchAnchor
       const distance = Math.hypot(position.x - anchor.previous.x, position.y - anchor.previous.y)
-      // Blend away the pose offset when the fist actually moves.
+      // Blend away the pose offset when the pinch actually moves.
       anchor.remaining = Math.max(0, anchor.remaining - Math.max(0, distance - 0.004) / 0.14)
       anchor.previous = position
       position = {

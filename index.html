@@ -10,81 +10,77 @@
   </head>
   <body>
     <main class="machine" id="machine">
-      <div class="cabinet">
+      <div class="cabinet" id="cabinet">
         <div class="fasteners" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
-        <header class="masthead">
-          <div class="brand">
-            <span class="brand-mark" aria-hidden="true"></span>
-            <h1>扭蛋黄</h1>
-          </div>
-          <div class="operator-controls" data-native>
-            <button id="camera-toggle" type="button" aria-pressed="false" disabled>启用摄像头</button>
-            <details id="debug">
-              <summary>调试设置</summary>
-              <div class="debug-panel">
-                <fieldset class="hand-settings">
-                  <legend>手势校准</legend>
-                  <p id="hand-status">摄像头未启动。</p>
-                  <div id="hand-preview" class="hand-preview" hidden></div>
-                  <label for="hand-device">摄像头设备</label>
-                  <select id="hand-device">
-                    <option value="">系统默认</option>
-                  </select>
-                  <button id="hand-reconnect" type="button" disabled>连接摄像头</button>
-                  <div id="hand-settings"></div>
-                  <label><input id="hand-mirror" type="checkbox" checked> 水平镜像</label>
-                </fieldset>
-                <div id="settings"></div>
-              </div>
-            </details>
-            <p id="camera-status" role="status" hidden></p>
-          </div>
-        </header>
-
-        <section class="hopper" aria-labelledby="hopper-title">
-          <h2 id="hopper-title">投放 Emoji</h2>
-          <div id="palette" class="palette"></div>
-        </section>
-
-        <div class="machine-body">
-          <section class="chamber" aria-label="扭蛋容器">
-            <div class="chamber-bar">
-              <span>碰撞室</span>
-              <span id="count">0 / 120</span>
-            </div>
-            <div class="playfield" id="playfield" aria-label="按住容器里的 Emoji 拖动，松开让它落下">
-              <div id="empty" class="empty">
-                <div id="empty-emoji" class="empty-emoji" aria-hidden="true"></div>
-                <p id="empty-message">正在启动扭蛋黄…</p>
-              </div>
-            </div>
-          </section>
-          <button id="draw" class="lever" type="button" data-native aria-keyshortcuts="ArrowDown" disabled>
-            <span class="lever-track" aria-hidden="true">
-              <span class="lever-base"></span>
-              <span class="lever-arm"><span class="lever-knob"></span></span>
-            </span>
-            <span class="lever-label">下拉抽扭蛋</span>
+        <h1 class="brand"><img src="%BASE_URL%art/dot-title.svg" alt="扭蛋黄" width="222" height="70"></h1>
+        <div class="operator-controls" data-native>
+          <button id="camera-toggle" type="button" aria-label="启用摄像头" title="启用摄像头" aria-pressed="false" disabled>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+              <rect x="3.5" y="5.5" width="17" height="13" rx="2"/>
+              <circle cx="12" cy="12" r="3"/>
+            </svg>
           </button>
+          <details id="debug">
+            <summary aria-label="调试设置" title="调试设置">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+                <path d="M4 6h16M4 12h16M4 18h16"/>
+                <circle cx="8" cy="6" r="2"/><circle cx="16" cy="12" r="2"/><circle cx="11" cy="18" r="2"/>
+              </svg>
+            </summary>
+            <div class="debug-panel">
+              <fieldset class="hand-settings">
+                <legend>手势校准</legend>
+                <p id="hand-status">摄像头未启动。</p>
+                <div id="hand-preview" class="hand-preview" hidden></div>
+                <label for="hand-device">摄像头设备</label>
+                <select id="hand-device"><option value="">系统默认</option></select>
+                <button id="hand-reconnect" type="button" disabled>连接摄像头</button>
+                <div id="hand-settings"></div>
+                <label><input id="hand-mirror" type="checkbox" checked> 水平镜像</label>
+              </fieldset>
+              <fieldset><legend>物理</legend><div id="settings"></div></fieldset>
+            </div>
+          </details>
+          <p id="camera-status" role="status" class="sr-only" hidden></p>
         </div>
 
-        <footer class="outlet">
-          <div class="outlet-slot">
-            <div class="outlet-copy">
-              <h2>扭蛋出口</h2>
-              <p id="notice" role="status">拖动 Emoji，松手释放。</p>
-              <div class="result" id="result" role="status" hidden>
-                <div id="result-art" class="result-art" aria-hidden="true"></div>
-                <div><strong id="result-name"></strong><span id="result-source"></span></div>
-              </div>
-            </div>
-            <button id="reset" class="action" type="button" data-action="reset" hidden>开始新一轮 <span aria-hidden="true">↻</span></button>
-          </div>
-          <div class="vents" aria-hidden="true"><i></i><i></i><i></i></div>
-        </footer>
+        <section id="channels" class="channels" aria-label="五个 Emoji 投放通道"></section>
+
+        <section id="playfield" class="playfield" aria-label="主交互仓">
+          <div class="glass-rim" aria-hidden="true"></div>
+          <p id="empty-message" class="load-error" role="alert" hidden></p>
+        </section>
+
+        <button id="draw" class="lever" type="button" data-native aria-keyshortcuts="ArrowDown"
+          aria-label="下拉摇杆" title="下拉摇杆" disabled>
+          <span class="lever-track" aria-hidden="true">
+            <span class="lever-base"></span>
+            <span class="lever-arm"><span class="lever-knob"></span></span>
+          </span>
+        </button>
+
+        <div class="drive-gears" aria-hidden="true">
+          <img src="%BASE_URL%art/gear.svg" alt=""><img src="%BASE_URL%art/gear.svg" alt="">
+        </div>
+        <div class="vents" aria-hidden="true"></div>
+
+        <section class="collector" aria-label="抽取结果滞留区">
+          <div class="retention-gate" id="retention-gate" aria-hidden="true"></div>
+          <div class="retention" id="retention"></div>
+        </section>
+        <button id="take" class="take" type="button" data-native data-hand disabled>带走！</button>
+        <p id="notice" class="sr-only" role="status"></p>
       </div>
       <div id="cursor" class="cursor" aria-hidden="true" hidden></div>
     </main>
+    <dialog id="souvenir" aria-labelledby="souvenir-title">
+      <h2 id="souvenir-title" class="sr-only">扭蛋黄纪念卡</h2>
+      <img id="souvenir-preview" alt="本次抽取纪念图">
+      <div class="souvenir-controls">
+        <button id="close-card" type="button" data-hand>关闭</button>
+        <a id="save-card" data-hand download="扭蛋黄-纪念卡.png">下载 PNG</a>
+      </div>
+    </dialog>
     <footer class="credits"><a href="https://googlefonts.github.io/noto-emoji-animation/">Noto Animated Emoji · Google</a> / <a href="https://creativecommons.org/licenses/by/4.0/">CC BY 4.0</a></footer>
     <script type="module" src="/src/main.ts"></script>
   </body>

@@ -1,5 +1,4 @@
-import { arena, settingsSchema, type Settings } from '../core/config'
-import { catalog, emojiKinds } from '../emoji/catalog'
+import { arena, hatchStart, settingsSchema, type Settings } from '../core/config'
 import { emojiImage } from '../emoji/emojiImage'
 import type { CapsuleResult } from '../capsule/CapsuleResult'
 import type { Point } from '../input/InputManager'
@@ -7,11 +6,11 @@ import type { HandCalibration } from '../input/GestureFilter'
 import type { HandStatus } from '../input/HandTracking'
 import type { CameraDevice } from '../input/CameraCapture'
 import { CapsuleLever } from './CapsuleLever'
+import { ChannelControls } from './ChannelControls'
+import type { EmojiChannels } from '../emoji/EmojiChannels'
 
-const initialNotice = '按住拖动，松手释放。试试让不同的 Emoji 相撞。'
 const buttonGraceMs = 220
 const buttonGraceDistance = 28
-const handNotice = '移动手掌控制光标，张手后握拳抓取或选择。'
 const handStatusText: Record<HandStatus, string> = {
   permission: '等待摄像头权限…',
   starting: '摄像头已连接，正在等待第一帧画面…',
@@ -21,9 +20,9 @@ const handStatusText: Record<HandStatus, string> = {
   'model-error': '已收到摄像头画面，手势模型加载失败。请刷新页面后重试。',
   'inference-error': '已收到摄像头画面，手势识别已中断。请重新连接摄像头。',
   seeking: '画面已连接，等待手掌入镜。',
-  hover: '已定位手掌 · 伸直手指后再握拳',
-  open: '已识别张手 · 移动光标',
-  fist: '已识别握拳 · 张手释放',
+  hover: '已定位手掌，先分开拇指与食指。',
+  open: '移动手掌，捏合拇指与食指以抓取。',
+  pinch: '已捏合，分开手指以松开。',
 }
 
 function element<T extends HTMLElement>(id: string) {
@@ -32,60 +31,50 @@ function element<T extends HTMLElement>(id: string) {
   return node as T
 }
 
-export type Command = 'draw' | 'reset' | (typeof emojiKinds)[number]
-
 export class UIManager {
   readonly surface = element('machine')
   readonly playfield = element('playfield')
-  private readonly palette = element('palette')
-  private readonly draw = element<HTMLButtonElement>('draw')
   readonly lever: CapsuleLever
-  private readonly reset = element<HTMLButtonElement>('reset')
+  readonly channels: ChannelControls
+  readonly take = element<HTMLButtonElement>('take')
+  private readonly cabinet = element('cabinet')
+  private readonly gate = element('retention-gate')
+  private readonly retention = element('retention')
+  private readonly souvenir = element<HTMLDialogElement>('souvenir')
+  private readonly cardPreview = element<HTMLImageElement>('souvenir-preview')
+  private readonly download = element<HTMLAnchorElement>('save-card')
   private readonly cursor = element('cursor')
   private readonly cameraToggle = element<HTMLButtonElement>('camera-toggle')
   private readonly cameraStatus = element('camera-status')
   private readonly handStatus = element('hand-status')
   private readonly handReconnect = element<HTMLButtonElement>('hand-reconnect')
   private readonly handDevice = element<HTMLSelectElement>('hand-device')
-  private readonly result = element('result')
   private readonly notice = element('notice')
-  private readonly countLabel = element('count')
-  private readonly empty = element('empty')
-  private readonly buttons: HTMLButtonElement[] = []
-  private previousResult?: CapsuleResult
-  private handMode = false
-  private hoveredControl?: HTMLButtonElement
-  private lastButtonAim?: { control: HTMLButtonElement; time: number }
+  private displayed: CapsuleResult[] = []
+  private hoveredControl?: HTMLElement
+  private lastButtonAim?: { control: HTMLElement; time: number }
+  private cardUrl?: string
 
   constructor(
     settings: Settings,
+    channels: EmojiChannels,
     onChange: () => void,
-    onCommand: (command: Command, lane: number) => void,
+    onShake: () => void,
+    onTake: () => void,
   ) {
-    emojiKinds.forEach((kind, index) => {
-      const item = catalog[kind]
-      const button = document.createElement('button')
-      button.type = 'button'
-      button.className = 'emoji-button'
-      button.dataset.action = kind
-      button.setAttribute('aria-label', '投放' + item.name)
-      button.append(emojiImage(item.art, 'palette-art'), item.name)
-      this.palette.append(button)
-      this.buttons.push(button)
-      button.disabled = true
-      button.addEventListener('click', (event) => {
-        if (event.detail === 0) onCommand(kind, index / (emojiKinds.length - 1))
-      })
+    this.cabinet.style.setProperty('--hatch-start', String(hatchStart))
+    this.channels = new ChannelControls(element('channels'), channels)
+    this.lever = new CapsuleLever(element<HTMLButtonElement>('draw'), onShake)
+    this.take.addEventListener('click', onTake)
+    element('close-card').addEventListener('click', () => this.souvenir.close())
+    this.souvenir.addEventListener('close', () => {
+      this.surface.append(this.cursor)
+      this.cancelCursor()
+      if (this.cardUrl) URL.revokeObjectURL(this.cardUrl)
+      this.cardUrl = undefined
+      this.cardPreview.removeAttribute('src')
+      this.download.removeAttribute('href')
     })
-    this.lever = new CapsuleLever(this.draw, () => onCommand('draw', 0))
-    this.reset.addEventListener('click', (event) => {
-      if (event.detail === 0) onCommand('reset', 0)
-    })
-    element('empty-emoji').append(
-      emojiImage(catalog.turtle.art, 'preview-turtle'),
-      emojiImage(catalog.chicken.art, 'preview-chick'),
-      emojiImage(catalog.heart.art, 'preview-heart'),
-    )
     const debug = element('debug')
     debug.hidden = new URLSearchParams(location.search).get('exhibit') === '1'
     for (const key of Object.keys(settingsSchema) as (keyof Settings)[]) {
@@ -112,15 +101,27 @@ export class UIManager {
   }
 
   ready() {
-    element('empty-message').textContent = '从上方投放 Emoji'
-    this.draw.disabled = false
+    this.lever.button.disabled = false
     this.cameraToggle.disabled = false
     this.handReconnect.disabled = false
-    for (const button of this.buttons) button.disabled = false
+    this.channels.ready()
   }
 
   error(message: string) {
-    element('empty-message').textContent = message
+    const error = element('empty-message')
+    error.textContent = message
+    error.hidden = false
+  }
+
+  showCard(blob: Blob) {
+    if (this.cardUrl) URL.revokeObjectURL(this.cardUrl)
+    this.cardUrl = URL.createObjectURL(blob)
+    this.cardPreview.src = this.download.href = this.cardUrl
+    if (!this.souvenir.open) {
+      this.souvenir.showModal()
+      this.souvenir.append(this.cursor)
+      this.cancelCursor()
+    }
   }
 
   bindCamera(calibration: HandCalibration, toggle: () => void, reconnect: () => void) {
@@ -135,10 +136,10 @@ export class UIManager {
       preview.classList.toggle('mirrored', mirror.checked)
     })
     const fields = {
-      confidence: { label: '手势置信度', min: 0.4, max: 0.95 },
+      pinchThreshold: { label: '捏合阈值', min: 0.15, max: 0.5 },
       horizontalMargin: { label: '水平裁边比例', min: 0, max: 0.35 },
       verticalMargin: { label: '垂直裁边比例', min: 0, max: 0.35 },
-      verticalCenter: { label: '手部高度（数值越大，手可放得越低）', min: 0.3, max: 0.8 },
+      verticalCenter: { label: '手部高度', min: 0.3, max: 0.8 },
       smoothing: { label: '手势光标平滑', min: 0, max: 0.9 },
     } as const
     for (const key of Object.keys(fields) as (keyof typeof fields)[]) {
@@ -181,10 +182,11 @@ export class UIManager {
   }
 
   setCameraMode(enabled: boolean, error = '') {
-    this.handMode = enabled
     this.cursor.classList.toggle('hand-cursor', enabled)
     this.cameraToggle.setAttribute('aria-pressed', String(enabled))
-    this.cameraToggle.textContent = enabled ? '切回鼠标' : '启用摄像头'
+    const cameraAction = enabled ? '切回鼠标' : '启用摄像头'
+    this.cameraToggle.setAttribute('aria-label', cameraAction)
+    this.cameraToggle.title = error || cameraAction
     this.handReconnect.textContent = enabled ? '重新连接摄像头' : '连接摄像头'
     this.cameraStatus.hidden = !enabled && !error
     this.showHandStatus(error || (enabled ? handStatusText.permission : '摄像头未启动。'), !!error)
@@ -219,24 +221,22 @@ export class UIManager {
       y: (y - field.top) / field.height * arena.height,
     }
     const hit = document.elementFromPoint(x, y)
-    const hitButton = hit?.closest<HTMLButtonElement>('button[data-action], #draw')
-    let control = hitButton?.disabled ? undefined : hitButton ?? undefined
+    const target = hit?.closest<HTMLElement>('[data-channel], #draw, [data-hand]') ?? undefined
+    let control = target?.matches(':disabled') ? undefined : target
     const inside = !!hit && this.playfield.contains(hit)
     const now = performance.now()
     if (handAction === 'aim' && control) this.lastButtonAim = { control, time: now }
     if (handAction === 'activate') {
       const aim = this.lastButtonAim
       this.lastButtonAim = undefined
-      if (!control && aim && now - aim.time <= buttonGraceMs && !aim.control.disabled && !aim.control.hidden) {
+      if (!control && aim && now - aim.time <= buttonGraceMs && !aim.control.matches(':disabled') && !aim.control.hidden) {
         const bounds = aim.control.getBoundingClientRect()
         const dx = Math.max(bounds.left - x, x - bounds.right, 0)
         const dy = Math.max(bounds.top - y, y - bounds.bottom, 0)
         if (Math.hypot(dx, dy) <= buttonGraceDistance) control = aim.control
       }
     }
-    const command = control?.dataset.action as Command | undefined
-    const lane = control ? this.buttons.indexOf(control) / (emojiKinds.length - 1) : 0
-    return { point, command, lane, inside, control, screenY: y }
+    return { point, inside, control, screenY: y }
   }
 
   cancelCursor(point?: Point) {
@@ -244,7 +244,7 @@ export class UIManager {
     this.showCursor(point)
   }
 
-  showCursor(point?: Point, pressed = false, control?: HTMLButtonElement | null) {
+  showCursor(point?: Point, pressed = false, control?: HTMLElement) {
     if (this.hoveredControl !== control) {
       this.hoveredControl?.removeAttribute('data-gesture-hover')
       this.hoveredControl = control ?? undefined
@@ -255,41 +255,53 @@ export class UIManager {
       this.lastButtonAim = undefined
       return
     }
-    this.cursor.style.left = point.x * 100 + '%'
-    this.cursor.style.top = point.y * 100 + '%'
+    if (this.souvenir.open) {
+      const surface = this.surface.getBoundingClientRect()
+      this.cursor.style.left = surface.left + point.x * surface.width + 'px'
+      this.cursor.style.top = surface.top + point.y * surface.height + 'px'
+    } else {
+      this.cursor.style.left = point.x * 100 + '%'
+      this.cursor.style.top = point.y * 100 + '%'
+    }
     this.cursor.classList.toggle('pressed', pressed)
   }
 
-  update(count: number, max: number, result: CapsuleResult | undefined, notice: string) {
-    const countText = count + ' / ' + max
-    if (this.countLabel.textContent !== countText) this.countLabel.textContent = countText
-    this.empty.hidden = count > 0
-    const message = notice || (this.handMode ? handNotice : initialNotice)
-    if (this.notice.textContent !== message) this.notice.textContent = message
-    if (result === this.previousResult) return
-    this.previousResult = result
-    for (const button of this.buttons) button.disabled = !!result
-    this.draw.disabled = !!result
-    this.reset.hidden = !result
-    this.notice.hidden = !!result
-    this.result.hidden = !result
-    if (result) {
-      const portrait = emojiImage(result.art, 'result-portrait')
-      const images = result.badge ? [portrait, emojiImage(result.badge, 'result-badge')] : [portrait]
-      element('result-art').replaceChildren(...images)
-      element('result-name').textContent = result.name
-      const source = element('result-source')
-      source.replaceChildren()
-      if (result.source) {
-        source.append('来自')
-        result.source.forEach((kind, index) => {
-          if (index > 0) source.append('＋')
-          source.append(emojiImage(catalog[kind].art, 'source-art', catalog[kind].name))
-        })
+  update(shaking: boolean, retained: readonly CapsuleResult[], notice: string, exporting: boolean) {
+    this.channels.render()
+    this.cabinet.toggleAttribute('data-shaking', shaking)
+    this.gate.toggleAttribute('data-open', shaking)
+    this.lever.button.disabled = shaking
+    this.take.disabled = exporting || retained.length === 0
+    if (this.notice.textContent !== notice) this.notice.textContent = notice
+    if (retained.length === this.displayed.length && retained.every((item, i) => item === this.displayed[i])) return
+    const columns = Math.max(1, Math.ceil(Math.sqrt(retained.length * 3.5)))
+    this.retention.style.setProperty('--columns', String(columns))
+    this.retention.style.setProperty('--rows', String(Math.max(1, Math.ceil(retained.length / columns))))
+    const existing = new Map(this.displayed.map((item, i) => [item, this.retention.children[i]]))
+    const arrivals: { element: HTMLElement; x: number }[] = []
+    this.retention.replaceChildren(...retained.map(result => {
+      const previous = existing.get(result)
+      if (previous) return previous
+      const { art, badge, name, exitX } = result
+      const element = document.createElement('div')
+      element.className = 'retained-token'
+      element.append(emojiImage(art, 'retained-art', name))
+      if (badge) element.append(emojiImage(badge, 'retained-badge'))
+      arrivals.push({ element, x: exitX })
+      return element
+    }))
+    this.displayed = [...retained]
+    if (arrivals.length && !matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      const floor = this.playfield.getBoundingClientRect()
+      const offsets = arrivals.map(({ element, x }) => {
+        const target = element.getBoundingClientRect()
+        return { element, dx: floor.left + floor.width * x - target.x - target.width / 2,
+          dy: floor.bottom - target.y - target.height / 2 }
+      })
+      for (const { element, dx, dy } of offsets) {
+        element.animate([{ transform: `translate(${dx}px, ${dy}px)` }, { transform: 'translate(0, 0)' }],
+          { duration: 220, easing: 'cubic-bezier(0.23, 1, 0.32, 1)' })
       }
-      this.reset.focus({ preventScroll: true })
-    } else {
-      this.draw.focus({ preventScroll: true })
     }
   }
 }

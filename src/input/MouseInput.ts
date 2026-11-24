@@ -32,11 +32,11 @@ export class MouseInput implements InputSource {
       if (event.target instanceof Element && event.target.closest('[data-native]')) return
       active = event.pointerId
       this.surface.setPointerCapture(active)
-      send(event, 'fist')
+      send(event, 'pinch')
     }, options)
     this.surface.addEventListener('pointermove', (event) => {
       if (!event.isPrimary || (active !== undefined && event.pointerId !== active)) return
-      send(event, active === undefined ? 'open' : 'fist')
+      send(event, active === undefined ? 'open' : 'pinch')
     }, options)
     this.surface.addEventListener('pointerup', (event) => {
       if (active !== event.pointerId) return

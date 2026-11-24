@@ -11,6 +11,7 @@ type Visual = {
   token: HTMLDivElement
   portrait: HTMLPictureElement
   art: EmojiArt
+  animation: EmojiEntity['reaction'] | 'drop' | undefined
   badge?: HTMLPictureElement
 }
 
@@ -64,11 +65,13 @@ export class SceneRenderer {
       const sleepProgress = effect === 'sleep' ? progress : 1
       const defaultArt = catalog[entity.kind].art
       const art = progress >= 0.5 ? entity.result?.art ?? defaultArt : defaultArt
-      if (visual.art !== art) {
-        const portrait = emojiImage(art, 'scene-portrait')
+      const animation = reaction ?? (entity.spawnRemaining > 0 ? 'drop' : undefined)
+      if (visual.art !== art || visual.animation !== animation) {
+        const portrait = emojiImage(art, 'scene-portrait', '', !!animation)
         visual.portrait.replaceWith(portrait)
         visual.portrait = portrait
         visual.art = art
+        visual.animation = animation
       }
       const opacity = effect === 'soothe' || effect === 'brighten' ? 1 - pulse * 0.7 : 1
       const angle = body.angle + (resting ? (1 - (1 - sleepProgress) ** 2) * 0.3 : 0)
@@ -117,13 +120,13 @@ export class SceneRenderer {
     const ring = root.addChild(new Graphics())
     ring.visible = false
     const art = catalog[entity.kind].art
-    const portrait = emojiImage(art, 'scene-portrait')
+    const portrait = emojiImage(art, 'scene-portrait', '', entity.spawnRemaining > 0)
     const token = document.createElement('div')
     token.className = 'scene-token'
     token.append(portrait)
     this.emojiLayer.append(token)
     this.app.stage.addChild(root)
-    const visual = { root, ring, token, portrait, art }
+    const visual: Visual = { root, ring, token, portrait, art, animation: entity.spawnRemaining > 0 ? 'drop' : undefined }
     this.visuals.set(entity.body.id, visual)
     return visual
   }

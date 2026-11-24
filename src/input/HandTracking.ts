@@ -3,7 +3,7 @@ import type { InputSample, InputSource } from './InputManager'
 import type { createHandRecognizer } from './MediaPipeRecognizer'
 import type { CameraCapture } from './CameraCapture'
 
-type PoseStatus = 'seeking' | 'hover' | 'open' | 'fist'
+type PoseStatus = 'seeking' | 'hover' | 'open' | 'pinch'
 export type HandStatus = PoseStatus | 'permission' | 'starting' | 'loading' | 'no-frames' | 'dark-frames' | 'model-error' | 'inference-error'
 
 const frameTimeoutMs = 1500

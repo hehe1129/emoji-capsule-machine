@@ -1,10 +1,10 @@
-import { arena, type Settings } from './config'
+import { arena, shakeDuration, type Settings } from './config'
 import { PhysicsManager, physicsStep } from '../physics/PhysicsManager'
 import { ReactionEngine } from '../reactions/ReactionEngine'
 import type { EmojiEntity } from '../emoji/EmojiEntity'
 import type { EmojiKind } from '../emoji/catalog'
 import type { Point } from '../input/InputManager'
-import { drawCapsule, type CapsuleResult } from '../capsule/CapsuleResult'
+import { captureCapsule, type CapsuleResult } from '../capsule/CapsuleResult'
 
 const throwSmoothing = 1 - Math.exp(-physicsStep / 30)
 const maxDragSpeed = 1.65 // scene units per millisecond
@@ -15,7 +15,9 @@ export class AppController {
   private readonly objects = new Map<number, EmojiEntity>()
   private held?: { entity: EmojiEntity; offset: Point; target?: Point; previous: Point; velocity: Point }
   private accumulated = 0
-  result?: CapsuleResult
+  private shakeStarted?: number
+  private nextJolt = 0
+  readonly retained: CapsuleResult[] = []
   notice = ''
 
   constructor(readonly settings: Settings) {}
@@ -32,37 +34,30 @@ export class AppController {
     return this.held?.entity.body.id
   }
 
-  drop(kind: EmojiKind, lane: number) {
-    if (this.result) return
-    if (this.count >= this.settings.maxEmoji) {
-      this.notice = '容器已满，可以先抽取扭蛋。'
-      return
-    }
-    const radius = arena.radius
-    const y = radius + 12
-    const position = { x: this.findSpawnX(lane, radius, y), y }
-    const body = this.physics.create(position, this.settings)
-    this.objects.set(body.id, { body, kind, radius })
-    this.notice = ''
+  get shaking() {
+    return this.shakeStarted !== undefined
   }
 
-  private findSpawnX(lane: number, radius: number, y: number) {
-    const preferred = arena.width * (0.14 + lane * 0.72)
-    const nearby = Array.from(this.entities).filter(entity => Math.abs(entity.body.position.y - y) < entity.radius + radius)
-    const spacing = radius * 2 + 2
-    const available = (x: number) => x >= radius && x <= arena.width - radius && nearby.every(entity =>
-      Math.hypot(entity.body.position.x - x, entity.body.position.y - y) >= radius + entity.radius,
-    )
-    if (available(preferred)) return preferred
-    for (let offset = spacing; offset < arena.width; offset += spacing) {
-      if (available(preferred + offset)) return preferred + offset
-      if (available(preferred - offset)) return preferred - offset
+  drop(kind: EmojiKind, lane: number) {
+    if (this.count + this.retained.length >= this.settings.maxEmoji) {
+      this.notice = '机器已满。'
+      return false
     }
-    return preferred
+    const radius = arena.radius
+    const position = { x: arena.width * lane, y: radius + 1 }
+    for (const entity of this.entities) {
+      if (Math.hypot(entity.body.position.x - position.x, entity.body.position.y - position.y) < entity.radius + radius) {
+        return false
+      }
+    }
+    const body = this.physics.create(position, this.settings)
+    this.objects.set(body.id, { body, kind, radius, spawnRemaining: 940 })
+    this.notice = ''
+    return true
   }
 
   grab(point: Point) {
-    if (this.result || this.held) return
+    if (this.held) return
     let closest: EmojiEntity | undefined
     let minDistance = Infinity
     for (const entity of this.entities) {
@@ -119,21 +114,19 @@ export class AppController {
     previous.y = y
   }
 
-  draw() {
-    if (this.result) return
-    this.release()
-    this.result = drawCapsule(this.entities)
-    this.notice = this.result ? '' : '先投放一个 Emoji，再来抽扭蛋。'
+  shake(now: number) {
+    if (this.shaking) return
+    this.shakeStarted = now
+    this.nextJolt = now
+    this.notice = ''
+    this.physics.setHatch(true)
   }
 
-  reset() {
-    this.release()
-    for (const { body } of this.entities) this.physics.remove(body)
-    this.objects.clear()
-    this.reactions.reset()
-    this.result = undefined
-    this.notice = ''
-    this.accumulated = 0
+  take(items: readonly CapsuleResult[]) {
+    const selected = new Set(items)
+    for (let i = this.retained.length - 1; i >= 0; i--) {
+      if (selected.has(this.retained[i])) this.retained.splice(i, 1)
+    }
   }
 
   tune() {
@@ -142,17 +135,24 @@ export class AppController {
     }
   }
 
-  tick(delta: number) {
-    if (this.result) {
-      this.reactions.advance(this.entities, Math.min(delta, 64), this.settings.reactionCooldown)
-      return
+  tick(now: number, delta: number) {
+    if (this.shakeStarted !== undefined && now - this.shakeStarted >= shakeDuration) {
+      this.shakeStarted = undefined
+      this.physics.setHatch(false)
+    }
+    const phase = this.shakeStarted === undefined ? undefined : (now - this.shakeStarted) / 53
+    if (phase !== undefined && now >= this.nextJolt) {
+      this.nextJolt = now + 310
+      for (const { body } of this.entities) {
+        if (!body.isStatic) this.physics.shake(body, phase)
+      }
     }
     this.accumulated += Math.min(delta, 64)
     while (this.accumulated >= physicsStep) {
       this.accumulated -= physicsStep
       this.stepDrag()
       this.reactions.advance(this.entities, physicsStep, this.settings.reactionCooldown)
-      for (const [bodyA, bodyB] of this.physics.step(this.settings.gravity)) {
+      for (const [bodyA, bodyB] of this.physics.step(this.settings.gravity, phase)) {
         const first = this.objects.get(bodyA.id)
         const second = this.objects.get(bodyB.id)
         if (!first || !second) continue
@@ -174,7 +174,16 @@ export class AppController {
         if (rule.motion === 'boost') this.physics.boost(actor.body)
         this.notice = rule.message
       }
-      for (const { body, radius } of this.entities) {
+      for (const entity of this.entities) {
+        const { body, radius } = entity
+        entity.spawnRemaining = Math.max(0, entity.spawnRemaining - physicsStep)
+        // Only a body that crosses the open floor can enter the collection tray.
+        if (this.physics.canExit(body) && body.position.y >= arena.height && body.velocity.y > 0) {
+          this.retained.push(captureCapsule(entity))
+          this.physics.remove(body)
+          this.objects.delete(body.id)
+          continue
+        }
         const state = this.physics.contain(body, radius)
         if (state === 'recovered') this.notice = '一个 Emoji 越过边界，已移回容器。'
         if (state === 'invalid') {

@@ -6,23 +6,41 @@ import { defaultHandCalibration } from './input/GestureFilter'
 import { HandTracking } from './input/HandTracking'
 import { browserCameraCapture } from './input/CameraCapture'
 import { SceneRenderer } from './render/SceneRenderer'
-import { UIManager, type Command } from './ui/UIManager'
+import { UIManager } from './ui/UIManager'
+import { EmojiChannels } from './emoji/EmojiChannels'
+import { createSouvenir } from './capsule/SouvenirCard'
 import './ui/styles.css'
 
 async function start() {
   const app = new AppController({ ...initialSettings })
-  const ui = new UIManager(app.settings, () => app.tune(), command)
+  const channels = new EmojiChannels()
+  const ui = new UIManager(app.settings, channels, () => app.tune(),
+    () => app.shake(performance.now()), take)
   const scene = new SceneRenderer()
+  let exporting = false
 
   function refresh() {
-    ui.update(app.count, app.settings.maxEmoji, app.result, app.notice)
+    ui.update(app.shaking, app.retained, app.notice, exporting)
   }
 
-  function command(action: Command, lane: number) {
-    if (action === 'draw') app.draw()
-    else if (action === 'reset') app.reset()
-    else app.drop(action, lane)
+  async function take() {
+    if (exporting || app.retained.length === 0) return
+    const captured = [...app.retained]
+    exporting = true
     refresh()
+    try {
+      const image = await createSouvenir(captured)
+      ui.channels.cancelAll()
+      ui.showCard(image)
+      app.take(captured)
+    } catch (error) {
+      console.error(error)
+      app.notice = '纪念图生成失败，请重试。'
+      ui.error(app.notice)
+    } finally {
+      exporting = false
+      refresh()
+    }
   }
 
   try {
@@ -39,21 +57,25 @@ async function start() {
     if (action.type === 'cancel') {
       app.release()
       ui.lever.cancelHand()
+      ui.channels.releaseHand()
       ui.cancelCursor(action.position)
       return
     }
     const handAction = action.type === 'grab' ? 'activate' : action.pressed ? undefined : 'aim'
     const hit = ui.locate(action.position, cameraMode ? handAction : undefined)
     ui.showCursor(
-      cameraMode || (hit.inside && !app.result) ? action.position : undefined,
+      cameraMode || hit.inside ? action.position : undefined,
       action.pressed,
       cameraMode ? hit.control : undefined,
     )
     if (action.type === 'grab') {
-      if (cameraMode && hit.control === ui.lever.button && ui.lever.startHand(hit.screenY)) return
-      if (hit.command) command(hit.command, hit.lane)
-      else if (hit.inside) app.grab(hit.point)
+      if (cameraMode && hit.control) {
+        if (hit.control === ui.lever.button) ui.lever.startHand(hit.screenY)
+        else if (hit.control.dataset.channel !== undefined) ui.channels.press(Number(hit.control.dataset.channel), 'hand')
+        else hit.control.click()
+      } else if (hit.inside) app.grab(hit.point)
     } else if (action.type === 'release') {
+      ui.channels.releaseHand()
       if (cameraMode && ui.lever.releaseHand()) return
       if (!cameraMode) app.drag(hit.point)
       app.release(true)
@@ -89,6 +111,7 @@ async function start() {
     },
   )
   function switchInput(useCamera: boolean, error?: string) {
+    ui.channels.cancelAll()
     cameraMode = useCamera
     ui.setCameraMode(useCamera, error)
     input.use(useCamera ? hand : mouse)
@@ -108,7 +131,8 @@ async function start() {
   let previous = performance.now()
   function frame(now: number) {
     input.update(now)
-    app.tick(now - previous)
+    channels.tick(now, (kind, lane) => app.drop(kind, lane))
+    app.tick(now, now - previous)
     previous = now
     scene.render(app.entities, app.heldId)
     refresh()
@@ -120,5 +144,8 @@ async function start() {
 void start().catch((error: unknown) => {
   console.error(error)
   const message = document.getElementById('empty-message')
-  if (message) message.textContent = '扭蛋黄启动失败，请刷新页面。'
+  if (message) {
+    message.textContent = '扭蛋黄启动失败，请刷新页面。'
+    message.hidden = false
+  }
 })

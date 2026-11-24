@@ -4,38 +4,9 @@ import wasmBinaryPath from '@mediapipe/tasks-vision/vision_wasm_internal.wasm?ur
 import type { HandObservation } from './GestureFilter'
 
 const palmIndices = [0, 5, 9, 13, 17]
-const fingers = [5, 9, 13, 17]
 
-function difference(a: Landmark, b: Landmark) {
-  return { x: a.x - b.x, y: a.y - b.y, z: a.z - b.z }
-}
-
-function length(vector: ReturnType<typeof difference>) {
-  return Math.hypot(vector.x, vector.y, vector.z)
-}
-
-function isPalmExtended(hand?: Landmark[]) {
-  if (!hand || hand.length < 21) return false
-  return fingers.every(base => {
-    const proximal = difference(hand[base + 1], hand[base])
-    const distal = difference(hand[base + 3], hand[base + 1])
-    const dot = proximal.x * distal.x + proximal.y * distal.y + proximal.z * distal.z
-    const wristToTip = length(difference(hand[base + 3], hand[0]))
-    const wristToJoint = length(difference(hand[base + 1], hand[0]))
-    return dot > 0.75 * length(proximal) * length(distal) && wristToTip > 1.18 * wristToJoint
-  })
-}
-
-function countCurledFingers(hand?: Landmark[]) {
-  if (!hand || hand.length < 21) return 0
-  return fingers.filter(base => {
-    const proximal = difference(hand[base + 1], hand[base])
-    const middle = difference(hand[base + 2], hand[base + 1])
-    const dot = proximal.x * middle.x + proximal.y * middle.y + proximal.z * middle.z
-    const tipDistance = length(difference(hand[base + 3], hand[base]))
-    const straightLength = length(proximal) + length(middle) + length(difference(hand[base + 3], hand[base + 2]))
-    return dot < 0.45 * length(proximal) * length(middle) && tipDistance < 0.82 * straightLength
-  }).length
+function distance(a: Landmark, b: Landmark, aspect = 1) {
+  return Math.hypot((a.x - b.x) * aspect, a.y - b.y, (a.z - b.z) * aspect)
 }
 
 export async function createHandRecognizer() {
@@ -54,26 +25,23 @@ export async function createHandRecognizer() {
     observe(video: HTMLVideoElement, now: number): HandObservation | undefined {
       const result = recognizer.recognizeForVideo(video, now)
       const hand = result.landmarks[0]
-      const category = result.gestures[0]?.[0]
-      if (!hand) return
+      if (!hand || hand.length < 21) return
 
       const position = { x: 0, y: 0 }
       for (const index of palmIndices) {
-        const landmark = hand[index]
-        if (!Number.isFinite(landmark?.x) || !Number.isFinite(landmark?.y)) return
-        position.x += landmark.x / palmIndices.length
-        position.y += landmark.y / palmIndices.length
+        position.x += hand[index].x / palmIndices.length
+        position.y += hand[index].y / palmIndices.length
       }
-      const gesture = category?.categoryName === 'Open_Palm' ? 'open'
-        : category?.categoryName === 'Closed_Fist' ? 'fist' : undefined
-      const worldHand = result.worldLandmarks[0]
-      return {
-        position,
-        gesture,
-        confidence: category?.score,
-        extendedPalm: gesture !== 'fist' && isPalmExtended(worldHand),
-        curledFingers: countCurledFingers(worldHand),
-      }
+      const points = result.worldLandmarks[0]
+      const world = points?.length >= 21 ? points : undefined
+      const landmarks = world ?? hand
+      const aspect = world ? 1 : video.videoWidth / video.videoHeight
+      const palmSize = Math.max(distance(landmarks[0], landmarks[9], aspect),
+        distance(landmarks[5], landmarks[17], aspect))
+      const pinchRatio = distance(landmarks[4], landmarks[8], aspect) / palmSize
+      if (![position.x, position.y, pinchRatio].every(Number.isFinite)) return
+      // Finger distance controls the grip; the palm center keeps aiming steady.
+      return { position, pinchRatio }
     },
     close: () => recognizer.close(),
   }

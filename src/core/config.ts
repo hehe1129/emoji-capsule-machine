@@ -1,4 +1,6 @@
-export const arena = { width: 1200, height: 500, radius: 24 }
+export const arena = { width: 1200, height: 440, radius: 24 }
+export const hatchStart = 0.77
+export const shakeDuration = 3000
 
 export const settingsSchema = {
   gravity: { label: '重力', initial: 1, min: 0, max: 2, step: 0.05 },

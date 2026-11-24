@@ -6,6 +6,7 @@ export interface EmojiEntity {
   readonly kind: EmojiKind
   readonly body: Body
   radius: number
+  spawnRemaining: number
   result?: { name: string; ingredients: EmojiKind[]; art: EmojiArt; badge?: EmojiArt }
   reactionCounts?: Partial<Record<ReactionEffect, number>>
   reaction?: { elapsed: number; duration: number; effect: ReactionEffect }

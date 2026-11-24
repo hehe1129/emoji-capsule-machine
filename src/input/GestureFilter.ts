@@ -1,9 +1,9 @@
 import type { InputSample, Point } from './InputManager'
 
-type Gesture = 'open' | 'fist'
+type Gesture = 'open' | 'pinch'
 
 export interface HandCalibration {
-  confidence: number
+  pinchThreshold: number
   mirror: boolean
   horizontalMargin: number
   verticalMargin: number
@@ -12,7 +12,7 @@ export interface HandCalibration {
 }
 
 export const defaultHandCalibration: HandCalibration = {
-  confidence: 0.55,
+  pinchThreshold: 0.29,
   mirror: true,
   horizontalMargin: 0.12,
   verticalMargin: 0.18,
@@ -22,13 +22,10 @@ export const defaultHandCalibration: HandCalibration = {
 
 export interface HandObservation {
   position: Point
-  gesture?: Gesture
-  confidence?: number
-  extendedPalm?: boolean
-  curledFingers?: number
+  pinchRatio: number
 }
 
-const dwellMs: Record<Gesture, number> = { open: 50, fist: 45 }
+const dwellMs: Record<Gesture, number> = { open: 50, pinch: 45 }
 const evidenceGapMs = 125
 const lossGraceMs = 240
 const cursorGraceMs = 420
@@ -39,23 +36,11 @@ function normalizeAxis(value: number, margin: number, center = 0.5) {
   return Math.max(0, Math.min(1, (value - start) / span))
 }
 
-function classify(observation: HandObservation, confidence: number): Gesture | undefined {
-  const score = observation.confidence ?? 0
-  if (score >= confidence && observation.gesture) return observation.gesture
-  const curledFingers = observation.curledFingers ?? 0
-  if (curledFingers === 4 || (curledFingers === 3 && observation.gesture === 'fist' && score >= confidence * 0.65)) {
-    return 'fist'
-  }
-  if (observation.extendedPalm) return 'open'
-}
-
 export class GestureFilter {
   private stable?: Gesture
   private armed = false
   private pending?: { gesture: Gesture; since: number; lastSeen: number }
   private lastSeen = -Infinity
-  private lastPose = -Infinity
-  private lastOpen = -Infinity
   private trackingInterrupted = false
 
   observe(observation: HandObservation | undefined, now: number, config: HandCalibration): InputSample | undefined {
@@ -64,8 +49,8 @@ export class GestureFilter {
     this.trackingInterrupted = false
     this.lastSeen = now
     const { position } = observation
-    const pose = classify(observation, config.confidence)
-    if (pose === 'open') this.lastOpen = now
+    const threshold = config.pinchThreshold + (this.stable === 'pinch' ? 0.12 : 0)
+    const pose = observation.pinchRatio <= threshold ? 'pinch' : 'open'
     this.updatePose(pose, now)
 
     return {
@@ -75,25 +60,14 @@ export class GestureFilter {
         y: normalizeAxis(position.y, config.verticalMargin, config.verticalCenter),
       },
       sampledAt: now,
-      holdPosition: (this.stable === 'open' && (this.pending?.gesture === 'fist' ||
-        (pose === undefined && now - this.lastOpen <= evidenceGapMs))) ||
-        (this.stable === 'fist' && this.pending?.gesture === 'open'),
+      holdPosition: this.stable !== undefined && this.pending !== undefined,
     }
   }
 
-  private updatePose(gesture: Gesture | undefined, now: number) {
+  private updatePose(gesture: Gesture, now: number) {
     if (this.pending && now - this.pending.lastSeen > evidenceGapMs) this.pending = undefined
-    if (!gesture) {
-      // Keep an ambiguous transition briefly, but release a held object on persistent uncertainty.
-      if (now - this.lastPose >= lossGraceMs) {
-        if (this.stable === 'fist') this.armed = false
-        this.stable = undefined
-      }
-      return
-    }
-    this.lastPose = now
-    // Recover with an open palm so a fist entering the frame cannot click.
-    if (gesture === this.stable || (!this.armed && gesture === 'fist')) {
+    // Require separation after tracking loss before accepting another pinch.
+    if (gesture === this.stable || (!this.armed && gesture === 'pinch')) {
       this.pending = undefined
     } else if (this.pending?.gesture !== gesture) {
       this.pending = { gesture, since: now, lastSeen: now }
@@ -124,8 +98,6 @@ export class GestureFilter {
     this.stable = undefined
     this.armed = false
     this.pending = undefined
-    this.lastPose = -Infinity
-    this.lastOpen = -Infinity
   }
 
   reset(): InputSample {
