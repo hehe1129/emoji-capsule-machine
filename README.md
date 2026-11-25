@@ -34,7 +34,9 @@ Vite 本地预览使用浏览器存储。两个标签页能查看同一份本地
 
 GitHub 继续使用 `main`。Cloudflare Pages 保持已有 Git 集成，构建命令 `npm run build`、产物目录 `dist`。仓库根目录 `functions/api/posters.ts` 提供 JSON 公共档案接口，仅 `/api/posters` 被 Pages Functions 接管。D1 保存规范化的 Emoji 种类、融合状态、排版、作品 ID 和时间。图片由任意访客按原排版重建，无需 R2 或图片上传。
 
-首次为一个环境启用公共墙：
+原站的 Production 环境通过 `wrangler.toml` 将 `POSTERS` 绑定到 `egg-posters`。预览分支可使用独立数据库，避免测试数据进入正式墙。
+
+为新环境启用公共墙：
 
 1. 在 Cloudflare 的 **Storage & Databases → D1** 中创建 `egg-posters`。
 2. 从项目目录用已授权的 Cloudflare CLI 初始化数据库。
@@ -43,7 +45,7 @@ GitHub 继续使用 `main`。Cloudflare Pages 保持已有 Git 集成，构建�
    npx wrangler d1 execute egg-posters --remote --file migrations/0001_posters.sql
    ```
 
-3. 在 **Workers & Pages → emoji-capsule-machine → Settings → Bindings** 中为 Production 添加 D1 绑定，变量名 `POSTERS`，指向该数据库。为预览分支单独配置数据库可避免测试数据进入正式墙。
+3. 在 `wrangler.toml` 中为目标环境添加 `POSTERS` D1 绑定，指向对应数据库。
 4. 重新部署。浏览器打开 `/api/posters` 应返回 `"mode": "shared"`。用两个独立浏览器配置验证写入和读取。
 
 未绑定 D1 时，API 明确返回本地模式。绑定存在但失败时会报告错误，保留滞留区和原作品编号供重试。媒体模型、WASM 和 Emoji 都由当前域名提供。

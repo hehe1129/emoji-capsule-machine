@@ -1,0 +1,8 @@
+name = "emoji-capsule-machine"
+pages_build_output_dir = "dist"
+compatibility_date = "2026-11-20"
+
+[[env.production.d1_databases]]
+binding = "POSTERS"
+database_name = "egg-posters"
+database_id = "8621bc70-a595-4fde-88b6-fb6bccb2eb2a"
