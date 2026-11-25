@@ -1,4 +1,4 @@
-import { arena, hatchX, hatchEnd, shakeDuration, type Settings } from './config'
+import { arena, hatchX, hatchEnd, shakeDuration, type LidSide, type Settings } from './config'
 import { PhysicsManager, physicsStep } from '../physics/PhysicsManager'
 import { ReactionEngine } from '../reactions/ReactionEngine'
 import type { EmojiEntity } from '../emoji/EmojiEntity'
@@ -47,12 +47,19 @@ export class AppController {
     return this.shakeStarted !== undefined
   }
 
-  drop() {
+  drop(side: LidSide) {
     if (this.objects.size >= this.settings.maxEmoji) {
       this.notice = '机器已满。'
       return false
     }
-    this.spawn(arena.radius + 10 + Math.random() * (arena.width - arena.radius * 2 - 20), -arena.radius - 2, true)
+    const inset = 35 + Math.random() * 58
+    const x = side === 'left' ? inset : arena.width - inset
+    const body = this.spawn(x, -44 + Math.random() * 13, true)
+    const direction = side === 'left' ? 1 : -1
+    this.physics.launch(body, {
+      x: direction * (0.13 + Math.random() * 0.42),
+      y: 0.13 + Math.random() * 0.19,
+    })
     this.notice = ''
     return true
   }
@@ -61,6 +68,7 @@ export class AppController {
     const body = this.physics.create({ x, y }, this.settings)
     const entity = { body, kind: randomKind(), radius: arena.radius, spawnRemaining: active ? 420 : 0 }
     this.objects.set(body.id, entity)
+    return body
   }
 
   private remove(entity: EmojiEntity) {

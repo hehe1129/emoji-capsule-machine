@@ -1,5 +1,5 @@
 import { emojiImageUrl, type EmojiArtwork } from '../emoji/emojiImage'
-import { portrait, posterColors, posterSize, type Poster } from './PosterLayout'
+import { portrait, posterPalette, posterSize, type Poster } from './PosterLayout'
 
 const ink = '#111113'
 const title = '扭蛋黄'
@@ -26,22 +26,37 @@ export async function createSouvenir(poster: Poster) {
   const context = canvas.getContext('2d')
   if (!context) throw new Error('Canvas unavailable')
   context.scale(2, 2)
-  const colors = posterColors[poster.palette]
+  const colors = posterPalette(poster)
   context.fillStyle = colors.paper
   context.fillRect(0, 0, width, height)
-  context.lineWidth = 8
-  context.strokeStyle = ink
-  context.strokeRect(25, 25, 550, 790)
-  context.fillStyle = colors.field
-  context.fillRect(42, 135, 516, 558)
-  context.strokeRect(42, 135, 516, 558)
   context.fillStyle = ink
-  context.font = '900 67px "Microsoft YaHei", "PingFang SC", sans-serif'
-  context.fillText(title, 46, 104)
-  context.font = '700 22px "Microsoft YaHei", sans-serif'
-  context.fillText('扭蛋黄纪念海报', 46, 747)
-  context.font = '700 19px system-ui'
-  context.fillText('#' + poster.id.slice(0, 8).toUpperCase() + '  /  ' + poster.createdAt.slice(0, 10), 46, 782)
+  context.strokeStyle = ink
+  const edition = '#' + poster.id.slice(0, 8).toUpperCase()
+  if (poster.version === 1 && colors.field) {
+    context.lineWidth = 8
+    context.strokeRect(25, 25, 550, 790)
+    context.fillStyle = colors.field
+    context.fillRect(42, 135, 516, 558)
+    context.strokeRect(42, 135, 516, 558)
+    context.fillStyle = ink
+    context.font = '900 67px "Microsoft YaHei", "PingFang SC", sans-serif'
+    context.fillText(title, 46, 104)
+    context.font = '700 22px "Microsoft YaHei", sans-serif'
+    context.fillText('扭蛋黄纪念海报', 46, 747)
+    context.font = '700 19px system-ui'
+    context.fillText(edition + '  /  ' + poster.createdAt.slice(0, 10), 46, 782)
+  } else {
+    context.font = '900 78px "Microsoft YaHei", "PingFang SC", sans-serif'
+    context.fillText(title, 42, 102)
+    context.font = '600 17px system-ui'
+    context.textAlign = 'right'
+    context.fillText(edition, 558, 100)
+    context.textAlign = 'left'
+    context.fillRect(42, 124, 516, 3)
+    context.fillRect(42, 710, 516, 3)
+    context.font = '600 26px "Microsoft YaHei", "PingFang SC", sans-serif'
+    context.fillText(poster.caption ?? '', 42, 759, 516)
+  }
   const artwork = await Promise.all(poster.stickers.map(async sticker => {
     const art = portrait(sticker.kind, sticker.state)
     return { sticker, art, image: await load(art.kind), badge: art.badge && await load(art.badge) }

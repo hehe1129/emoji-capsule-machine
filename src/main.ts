@@ -1,5 +1,5 @@
 import { AppController } from './core/AppController'
-import { dropInterval, initialSettings } from './core/config'
+import { dropInterval, initialSettings, type LidSide } from './core/config'
 import { InputManager } from './input/InputManager'
 import { MouseInput } from './input/MouseInput'
 import { defaultHandCalibration } from './input/GestureFilter'
@@ -7,7 +7,7 @@ import { HandTracking } from './input/HandTracking'
 import { browserCameraCapture } from './input/CameraCapture'
 import { SceneRenderer } from './render/SceneRenderer'
 import { UIManager } from './ui/UIManager'
-import { PosterWall, posterElement } from './ui/PosterWall'
+import { PosterWall } from './ui/PosterWall'
 import { createPoster, type Poster } from './capsule/PosterLayout'
 import type { CapsuleResult } from './capsule/CapsuleResult'
 import { createSouvenir } from './capsule/SouvenirCard'
@@ -16,70 +16,79 @@ import './ui/styles.css'
 async function start() {
   const app = new AppController({ ...initialSettings })
   const ui = new UIManager(app.settings, () => app.tune(), () => app.shake(performance.now()),
-    take, cancelAction, () => ui.showArchiveMode(wall.store.mode))
+    take, cancelAction, () => ui.showArchiveMode(wall.store.mode), () => void savePoster(), closePoster)
   const scene = new SceneRenderer()
   const wall = new PosterWall(ui.gallery, async poster => {
     if (ui.camera.locked || ui.camera.view !== 'wall' || ui.modalOpen) return
     wall.aim()
-    const preview = posterElement(poster)
-    const version = poster.createdAt && 'version' in poster ? poster as Poster : undefined
-    if (!version) ui.showCard(preview)
-    else {
-      try {
-        const png = await createSouvenir(version)
-        if (ui.camera.view === 'wall' && !ui.modalOpen) ui.showCard(preview, png)
-      } catch {
-        ui.report('海报暂时无法打开，请重试。')
-      }
+    try {
+      const png = await createSouvenir(poster)
+      if (ui.camera.view === 'wall' && !ui.modalOpen) ui.showCard(png)
+    } catch {
+      ui.report('海报暂时无法打开，请重试。')
     }
   }, message => ui.report(message))
-  let active: 'lid' | 'lever' | 'emoji' | undefined
+  let active: 'lid' | 'lever' | 'emoji' | 'sticker' | undefined
   let nextDrop = 0
+  let lidSide: LidSide | undefined
   let exporting = false
-  let draft: { poster: Poster; items: CapsuleResult[]; png?: Blob } | undefined
+  let draft: { poster: Poster; items: CapsuleResult[]; png?: Blob; submitted?: boolean } | undefined
 
   function refresh() {
     ui.update(app.shaking, app.retainedCount, exporting)
   }
 
-  async function take() {
-    if (exporting || ui.camera.locked || ui.camera.view !== 'machine') return
+  function take() {
+    if (exporting || ui.camera.locked || ui.modalOpen || ui.camera.view !== 'machine') return
     if (!draft) {
       const items = app.capture()
       if (!items.length) return
       draft = { items, poster: createPoster(items) }
     }
+    cancelAction()
+    ui.showEditor(draft.poster, !!draft.submitted)
+  }
+
+  function closePoster() {
+    if (!draft?.submitted) draft = undefined
+    if (active === 'sticker') active = undefined
+  }
+
+  async function savePoster() {
+    const pending = draft
+    if (!pending || exporting) return
     exporting = true
     refresh()
-    const pending = draft
+    ui.setPosterStatus(true, true)
     try {
       pending.png ??= await createSouvenir(pending.poster)
+      pending.submitted = true
       const saved = await wall.store.save(pending.poster)
       app.take(pending.items)
       draft = undefined
       wall.add(saved)
       cancelAction()
-      if (ui.camera.view === 'machine' && !ui.modalOpen) {
-        ui.showCard(posterElement(saved), pending.png)
-      }
-      if (wall.store.mode === 'local') ui.report('海报已保存在这台设备。')
+      ui.showCard(pending.png)
+      if (wall.store.mode === 'local') ui.setPosterStatus(false, false, '海报已保存在这台设备。')
     } catch (error) {
       console.error(error)
-      ui.report('海报保存失败。Emoji 已保留，可再次点「带走!」。', 5000)
+      ui.setPosterStatus(false, !!pending.submitted, '保存失败，Emoji 已保留。')
     } finally {
       exporting = false
       refresh()
     }
   }
 
-  function setLid(open: boolean) {
-    ui.setLid(open)
-    nextDrop = open ? performance.now() : 0
+  function setLid(side?: LidSide) {
+    lidSide = side
+    ui.setLid(side)
+    nextDrop = side ? performance.now() + 125 : 0
   }
 
   function cancelAction() {
-    setLid(false)
+    setLid()
     ui.lever.cancel()
+    ui.editor.release()
     app.release()
     wall.aim()
     active = undefined
@@ -105,13 +114,16 @@ async function start() {
     const handAction = action.type === 'grab' ? 'activate' : action.pressed ? undefined : 'aim'
     const hit = ui.locate(action.position, cameraMode ? handAction : undefined)
     ui.showCursor(cameraMode ? action.position : undefined, action.pressed, cameraMode ? hit.control : undefined)
-    wall.aim(!ui.modalOpen && hit.insideGallery && !action.pressed ? hit.screenY : undefined)
+    wall.aim(!ui.modalOpen && hit.insideGallery && !action.pressed ? hit.screen.y : undefined)
     if (ui.camera.locked) return
     if (action.type === 'grab') {
-      if (hit.control === ui.lid) {
+      if (hit.sticker && ui.editor.grab(hit.sticker, hit.screen)) {
+        active = 'sticker'
+      } else if (hit.control === ui.lid) {
         active = 'lid'
-        setLid(true)
-      } else if (hit.control === ui.lever.button && ui.lever.start(hit.screenY)) {
+        const bounds = ui.lid.getBoundingClientRect()
+        setLid(hit.screen.x < bounds.left + bounds.width / 2 ? 'left' : 'right')
+      } else if (hit.control === ui.lever.button && ui.lever.start(hit.screen.y)) {
         active = 'lever'
       } else if (cameraMode && hit.control) {
         hit.control.click()
@@ -120,20 +132,25 @@ async function start() {
         active = 'emoji'
       }
     } else if (action.type === 'release') {
-      if (active === 'lid') setLid(false)
-      if (active === 'lever') { ui.lever.move(hit.screenY); ui.lever.release() }
+      if (active === 'lid') setLid()
+      if (active === 'lever') { ui.lever.move(hit.screen.y); ui.lever.release() }
+      if (active === 'sticker') {
+        if (!cameraMode) ui.editor.drag(hit.screen)
+        ui.editor.release()
+      }
       if (active === 'emoji') {
         if (!cameraMode) app.drag(hit.point)
         app.release(true)
       }
       active = undefined
     } else if (action.pressed) {
-      if (active === 'lever') ui.lever.move(hit.screenY)
+      if (active === 'lever') ui.lever.move(hit.screen.y)
+      if (active === 'sticker') ui.editor.drag(hit.screen)
       if (active === 'emoji') app.drag(hit.point, cameraMode)
     }
   }, () => cameraMode ? calibration.smoothing : app.settings.smoothing)
 
-  const mouse = new MouseInput(ui.surface)
+  const mouse = new MouseInput(ui.surface, () => ui.inputBounds())
   let deviceQuery = 0
   async function refreshCameraDevices() {
     const request = ++deviceQuery
@@ -170,7 +187,7 @@ async function start() {
     event.preventDefault()
     if (!event.repeat && !active) {
       active = 'lid'
-      setLid(true)
+      setLid('left')
     }
   })
   ui.lid.addEventListener('keyup', event => {
@@ -199,9 +216,9 @@ async function start() {
   function frame(now: number) {
     const delta = now - previous
     input.update(now)
-    if (nextDrop && now >= nextDrop) {
+    if (lidSide && nextDrop && now >= nextDrop) {
       nextDrop = now + dropInterval
-      if (app.drop()) capacityMessage = false
+      if (app.drop(lidSide)) capacityMessage = false
       else if (!capacityMessage) {
         capacityMessage = true
         ui.report(app.notice)

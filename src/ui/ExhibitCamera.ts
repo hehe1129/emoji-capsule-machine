@@ -29,9 +29,10 @@ export class ExhibitCamera {
     this.world.dataset.transition = ''
     this.onChange()
     const bounds = view === 'machine' ? cabinet : posterWall
-    const zoom = view === 'overview' ? 1 : view === 'machine' ? 1.30 : 1.33
+    const zoom = view === 'overview' ? 1 : view === 'machine' ? 1.66 : 1.33
     const x = view === 'overview' ? 0 : exhibit.width / 2 - (bounds.x + bounds.width / 2) * zoom
-    const y = view === 'overview' ? 0 : exhibit.height / 2 - (bounds.y + bounds.height / 2) * zoom
+    const focusY = view === 'machine' ? cabinet.y + 377 : bounds.y + bounds.height / 2
+    const y = view === 'overview' ? 0 : exhibit.height / 2 - focusY * zoom
     const before = this.world.style.transform || 'translate(0px, 0px) scale(1)'
     const after = 'translate(' + x + 'px, ' + y + 'px) scale(' + zoom + ')'
     this.world.style.transform = after

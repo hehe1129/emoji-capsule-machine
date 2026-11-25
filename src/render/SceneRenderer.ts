@@ -33,7 +33,7 @@ export class SceneRenderer {
       [mouth, bottom], [tray.x, bottom], [tray.x, floor], [chamber.x, floor],
     ].map(([x, y]) => x + 'px ' + y + 'px').join(', ')
     layer.style.setProperty('--glass-clip', 'polygon(' + outline(chamber.y) + ')')
-    layer.style.setProperty('--inlet-clip', 'polygon(' + outline(chamber.y - 34) + ')')
+    layer.style.setProperty('--inlet-clip', 'polygon(' + outline(chamber.y - 85) + ')')
     layer.append(this.app.canvas)
     host.append(layer)
   }

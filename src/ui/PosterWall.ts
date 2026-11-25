@@ -1,24 +1,17 @@
 import { emojiImage } from '../emoji/emojiImage'
-import type { EmojiKind } from '../emoji/catalog'
-import { portrait, posterColors, posterSize, type Poster, type Sticker } from '../capsule/PosterLayout'
+import { portrait, posterPalette, posterSize, type Poster, type Sticker } from '../capsule/PosterLayout'
 import { PosterStore } from '../capsule/PosterStore'
 
-type ExhibitPoster = Pick<Poster, 'id' | 'palette' | 'stickers'> & Partial<Pick<Poster, 'createdAt'>>
-
-const samples: EmojiKind[] = ['sun', 'moon', 'turtle', 'heart', 'angry', 'lightning',
-  'fish', 'worm', 'cat', 'chicken', 'sad', 'moon']
-const initial: ExhibitPoster[] = samples.map((kind, index) => ({
-  id: 'example-' + (index + 1),
-  palette: [0, 1, 3, 2, 2, 0, 1, 3, 3, 2, 0, 1][index],
-  stickers: [{ kind, x: 300, y: 414, size: 375, tilt: index % 2 ? 14 : -8 }],
-}))
+export function positionSticker(wrapper: HTMLElement, sticker: Sticker) {
+  wrapper.style.left = sticker.x / posterSize.width * 100 + '%'
+  wrapper.style.top = sticker.y / posterSize.height * 100 + '%'
+}
 
 function stickerElement(sticker: Sticker) {
   const art = portrait(sticker.kind, sticker.state)
   const wrapper = document.createElement('span')
   wrapper.className = 'poster-sticker'
-  wrapper.style.left = sticker.x / posterSize.width * 100 + '%'
-  wrapper.style.top = sticker.y / posterSize.height * 100 + '%'
+  positionSticker(wrapper, sticker)
   wrapper.style.width = sticker.size / posterSize.width * 100 + '%'
   wrapper.style.transform = 'translate(-50%, -50%) rotate(' + (sticker.tilt + art.tilt * 180 / Math.PI) + 'deg)'
   wrapper.append(emojiImage(art.kind, 'poster-art'))
@@ -26,24 +19,34 @@ function stickerElement(sticker: Sticker) {
   return wrapper
 }
 
-export function posterElement(poster: ExhibitPoster) {
+export function posterElement(poster: Poster, editable = false) {
   const print = document.createElement('span')
-  print.className = 'print'
-  print.classList.toggle('print-sample', !poster.createdAt)
-  const colors = posterColors[poster.palette]
+  print.className = poster.version === 2 ? 'print print-edition' : 'print'
+  const colors = posterPalette(poster)
   print.style.setProperty('--print-paper', colors.paper)
-  print.style.setProperty('--print-field', colors.field)
-  const field = document.createElement('span')
-  field.className = 'print-field'
-  print.append(field, ...poster.stickers.map(stickerElement))
-  if (poster.createdAt) {
-    const title = document.createElement('span')
-    const number = document.createElement('span')
-    title.className = 'print-title'
-    number.className = 'print-number'
-    title.textContent = '扭蛋黄'
-    number.textContent = '#' + poster.id.slice(0, 8).toUpperCase()
-    print.append(title, number)
+  if (poster.version === 1 && colors.field) {
+    print.style.setProperty('--print-field', colors.field)
+    const field = document.createElement('span')
+    field.className = 'print-field'
+    print.append(field)
+  }
+  poster.stickers.forEach((sticker, index) => {
+    const mark = stickerElement(sticker)
+    if (editable) mark.dataset.sticker = String(index)
+    print.append(mark)
+  })
+  const title = document.createElement('span')
+  const number = document.createElement('span')
+  title.className = 'print-title'
+  number.className = 'print-number'
+  title.textContent = '扭蛋黄'
+  number.textContent = '#' + poster.id.slice(0, 8).toUpperCase()
+  print.append(title, number)
+  if (poster.caption) {
+    const caption = document.createElement('span')
+    caption.className = 'print-caption'
+    caption.textContent = poster.caption
+    print.append(caption)
   }
   return print
 }
@@ -53,6 +56,7 @@ export class PosterWall {
   readonly store = new PosterStore()
   private items: Poster[] = []
   private next?: number
+  private emptyTiles: HTMLElement[] = []
   private busy = false
   private tiles = new Map<string, HTMLButtonElement>()
   private hoveredY?: number
@@ -60,7 +64,7 @@ export class PosterWall {
 
   constructor(
     readonly viewport: HTMLElement,
-    private readonly show: (poster: ExhibitPoster) => void,
+    private readonly show: (poster: Poster) => void,
     private readonly report: (message: string) => void,
   ) {
     this.grid = viewport.querySelector<HTMLElement>('.poster-grid')!
@@ -133,7 +137,7 @@ export class PosterWall {
   }
 
   private render() {
-    const posters = [...this.items, ...initial.slice(this.items.length)]
+    const posters = this.items
     const ids = new Set(posters.map(item => item.id))
     const before = this.viewport.getBoundingClientRect().top
     const anchor = this.viewport.scrollTop > 0
@@ -155,7 +159,7 @@ export class PosterWall {
         tile.dataset.hand = ''
         tile.dataset.native = ''
         tile.dataset.poster = poster.id
-        tile.setAttribute('aria-label', poster.createdAt ? '查看海报 ' + poster.id.slice(0, 8) : '查看示例海报 ' + poster.id.slice(8))
+        tile.setAttribute('aria-label', '查看海报 ' + poster.id.slice(0, 8))
         tile.append(posterElement(poster))
         tile.addEventListener('click', () => this.show(poster))
         this.tiles.set(poster.id, tile)
@@ -163,6 +167,15 @@ export class PosterWall {
       const at = this.grid.children.item(index)
       if (at !== tile) this.grid.insertBefore(tile, at)
     })
+    const blankCount = Math.max(0, 12 - posters.length)
+    while (this.emptyTiles.length > blankCount) this.emptyTiles.pop()?.remove()
+    while (this.emptyTiles.length < blankCount) {
+      const empty = document.createElement('span')
+      empty.className = 'poster-tile poster-empty'
+      empty.setAttribute('aria-hidden', 'true')
+      this.grid.append(empty)
+      this.emptyTiles.push(empty)
+    }
     if (oldTop !== undefined && anchor) {
       const scale = this.viewport.getBoundingClientRect().height / this.viewport.offsetHeight
       this.viewport.scrollTop += (anchor.getBoundingClientRect().top - oldTop) / scale

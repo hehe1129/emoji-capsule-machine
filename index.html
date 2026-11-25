@@ -17,13 +17,14 @@
         <div class="cabinet-art" id="cabinet-art">
           <svg class="cabinet-shell" viewBox="0 0 560 780" aria-hidden="true">
             <path fill="#e4edf0" d="M58 140H502V536H58Z"/>
-            <path fill="none" stroke="#111113" stroke-width="12" d="M60 132V533M500 132V533"/>
+            <path fill="none" stroke="#111113" stroke-width="12" d="M60 153V533M500 153V533"/>
             <path fill="#ff2f27" stroke="#111113" stroke-width="13" stroke-linejoin="round"
               d="M60 513H500L550 726V761Q550 774 537 774H23Q10 774 10 761V726Z"/>
             <path fill="none" stroke="#111113" stroke-width="7" d="M10 731H550"/>
             <path fill="#e62b25" d="M17 735H543V760Q543 767 537 767H23Q17 767 17 760Z"/>
           </svg>
           <div id="playfield" class="playfield" aria-label="玻璃主仓"></div>
+          <div class="lid-gap" aria-hidden="true"></div>
           <div id="collector" class="collector" role="group" aria-label="滞留区"></div>
           <div class="chamber-floor" aria-hidden="true"></div>
           <div id="retention-gate" class="retention-gate" aria-hidden="true"></div>
@@ -31,15 +32,17 @@
           <div id="machine-commands" class="machine-commands" inert>
             <button id="lid" class="lid-hit" type="button" aria-label="按住顶盖投放" title="按住顶盖投放" aria-pressed="false">
               <svg viewBox="0 0 560 165" aria-hidden="true">
-                <path fill="#ff3027" stroke="#111113" stroke-width="13" stroke-linejoin="round"
-                  d="M52 67 279 7q2-1 6 0l219 60q9 3 13 14l17 50v14q0 10-10 10H35q-10 0-10-10v-14l17-51q4-10 10-13Z"/>
-                <path fill="none" stroke="#111113" stroke-width="6" d="M27 115H530"/>
+                <path fill="#ff3027" stroke="#111113" stroke-width="12" stroke-linejoin="round"
+                  d="M60 153V77Q60 69 69 66L280 7L491 66Q500 69 500 77V153Z"/>
+                <path fill="none" stroke="#111113" stroke-width="6" d="M60 115H500"/>
               </svg>
             </button>
             <button id="draw" class="lever" type="button" aria-keyshortcuts="ArrowDown" aria-label="下拉摇杆" title="下拉摇杆">
               <span class="lever-track" aria-hidden="true"><span class="lever-base"></span><span class="lever-arm"><span class="lever-knob"></span></span></span>
             </button>
-            <button id="take" class="take" type="button" data-native data-hand disabled>带走!</button>
+            <button id="take" class="take" type="button" data-native data-hand aria-label="带走!" disabled>
+              <img src="%BASE_URL%art/take-dots.svg" alt="">
+            </button>
           </div>
         </div>
         <button id="enter-machine" class="scene-entry" type="button" data-native data-hand aria-label="进入扭蛋机"></button>
@@ -82,8 +85,11 @@
   <div id="cursor" class="cursor" aria-hidden="true" hidden></div>
   <dialog id="souvenir" aria-label="纪念海报">
     <div id="poster-view" class="poster-view"></div>
+    <div id="poster-colors" class="poster-colors" role="group" aria-label="海报底色" hidden></div>
+    <p id="poster-message" class="poster-message" role="status" hidden></p>
     <div class="dialog-controls">
       <button id="close-card" type="button" data-native data-hand aria-label="关闭海报"><span aria-hidden="true">×</span></button>
+      <button id="confirm-card" type="button" data-native data-hand hidden>生成海报</button>
       <a id="save-card" data-native data-hand download="扭蛋黄-纪念海报.png" hidden>下载 PNG</a>
     </div>
   </dialog>

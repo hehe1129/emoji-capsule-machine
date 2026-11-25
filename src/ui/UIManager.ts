@@ -1,10 +1,12 @@
-import { arena, cabinet, settingsSchema, type Settings } from '../core/config'
+import { arena, cabinet, settingsSchema, type LidSide, type Settings } from '../core/config'
 import type { Point } from '../input/InputManager'
 import type { HandCalibration } from '../input/GestureFilter'
 import type { HandStatus } from '../input/HandTracking'
 import type { CameraDevice } from '../input/CameraCapture'
 import { CapsuleLever } from './CapsuleLever'
 import { ExhibitCamera } from './ExhibitCamera'
+import { PosterEditor } from './PosterEditor'
+import type { Poster } from '../capsule/PosterLayout'
 import { place } from './placement'
 
 const buttonGraceMs = 220
@@ -49,6 +51,10 @@ export class UIManager {
   private readonly gate = element('retention-gate')
   private readonly souvenir = element<HTMLDialogElement>('souvenir')
   private readonly posterView = element('poster-view')
+  readonly editor = new PosterEditor(this.posterView, element('poster-colors'))
+  private readonly confirm = element<HTMLButtonElement>('confirm-card')
+  private readonly closeCard = element<HTMLButtonElement>('close-card')
+  private readonly posterMessage = element('poster-message')
   private readonly download = element<HTMLAnchorElement>('save-card')
   private readonly cursor = element('cursor')
   private readonly cameraToggle = element<HTMLButtonElement>('camera-toggle')
@@ -68,9 +74,14 @@ export class UIManager {
     onTake: () => void,
     onNavigate: () => void,
     onHelp: () => void,
+    onSavePoster: () => void,
+    onClosePoster: () => void,
   ) {
     place(this.playfield, cabinet.chamber)
     place(element('collector'), cabinet.tray)
+    this.cabinetArt.style.setProperty('--tray-left', cabinet.tray.x + 'px')
+    this.cabinetArt.style.setProperty('--tray-width', cabinet.tray.width + 'px')
+    this.cabinetArt.style.setProperty('--tray-height', cabinet.tray.height + 'px')
     this.camera = new ExhibitCamera(this.surface, element('fit'), element('world'), () => {
       if (this.camera.locked) onNavigate()
       this.updateView()
@@ -80,7 +91,11 @@ export class UIManager {
     this.back.addEventListener('click', () => void this.camera.go('overview'))
     this.lever = new CapsuleLever(element<HTMLButtonElement>('draw'), onShake)
     this.take.addEventListener('click', onTake)
-    element('close-card').addEventListener('click', () => this.souvenir.close())
+    this.closeCard.addEventListener('click', () => this.souvenir.close())
+    this.confirm.addEventListener('click', onSavePoster)
+    this.souvenir.addEventListener('cancel', event => {
+      if (this.closeCard.disabled) event.preventDefault()
+    })
     element('help').addEventListener('click', () => {
       onNavigate()
       onHelp()
@@ -94,6 +109,8 @@ export class UIManager {
       })
     }
     this.souvenir.addEventListener('close', () => {
+      this.editor.close()
+      onClosePoster()
       if (this.cardUrl) URL.revokeObjectURL(this.cardUrl)
       this.cardUrl = undefined
       this.posterView.replaceChildren()
@@ -151,6 +168,10 @@ export class UIManager {
     return this.souvenir.open || this.instructions.open
   }
 
+  inputBounds() {
+    return this.modalOpen ? new DOMRect(0, 0, innerWidth, innerHeight) : this.surface.getBoundingClientRect()
+  }
+
   report(message: string, duration = 2900) {
     window.clearTimeout(this.toastTimer)
     this.notice.textContent = message
@@ -170,26 +191,42 @@ export class UIManager {
     this.cancelCursor()
   }
 
-  showCard(poster: HTMLElement, blob?: Blob) {
-    if (this.cardUrl) URL.revokeObjectURL(this.cardUrl)
-    this.cardUrl = blob && URL.createObjectURL(blob)
-    this.download.hidden = !this.cardUrl
-    if (this.cardUrl) this.download.href = this.cardUrl
-    if (this.cardUrl) {
-      const image = new Image()
-      image.src = this.cardUrl
-      image.alt = '扭蛋黄纪念海报'
-      image.className = 'poster-preview-image'
-      this.posterView.replaceChildren(image)
-    } else {
-      this.posterView.replaceChildren(poster)
-    }
+  showEditor(poster: Poster, retry: boolean) {
+    this.editor.open(poster)
+    this.download.hidden = true
+    this.confirm.hidden = false
+    this.setPosterStatus(false, retry, retry ? '可重试保存这张海报。' : '')
     this.open(this.souvenir)
   }
 
-  setLid(open: boolean) {
-    this.lid.setAttribute('aria-pressed', String(open))
-    this.cabinetArt.toggleAttribute('data-lid-open', open)
+  setPosterStatus(saving: boolean, locked: boolean, message = '') {
+    this.editor.lock(locked)
+    this.confirm.disabled = this.closeCard.disabled = saving
+    this.confirm.textContent = saving ? '正在归档…' : locked ? '重试保存' : '生成海报'
+    this.posterMessage.textContent = message
+    this.posterMessage.hidden = !message
+  }
+
+  showCard(blob: Blob) {
+    this.editor.close()
+    this.setPosterStatus(false, false)
+    this.confirm.hidden = true
+    if (this.cardUrl) URL.revokeObjectURL(this.cardUrl)
+    this.cardUrl = URL.createObjectURL(blob)
+    this.download.hidden = false
+    this.download.href = this.cardUrl
+    const image = new Image()
+    image.src = this.cardUrl
+    image.alt = '扭蛋黄纪念海报'
+    image.className = 'poster-preview-image'
+    this.posterView.replaceChildren(image)
+    this.open(this.souvenir)
+  }
+
+  setLid(side?: LidSide) {
+    this.lid.setAttribute('aria-pressed', String(!!side))
+    if (side) this.cabinetArt.dataset.lidSide = side
+    else delete this.cabinetArt.dataset.lidSide
   }
 
   bindCamera(calibration: HandCalibration, toggle: () => void, reconnect: () => void) {
@@ -281,9 +318,9 @@ export class UIManager {
   }
 
   locate(position: Point, handAction?: 'aim' | 'activate') {
-    const surface = this.surface.getBoundingClientRect()
-    const x = this.modalOpen ? position.x * innerWidth : surface.left + position.x * surface.width
-    const y = this.modalOpen ? position.y * innerHeight : surface.top + position.y * surface.height
+    const surface = this.inputBounds()
+    const x = surface.left + position.x * surface.width
+    const y = surface.top + position.y * surface.height
     const field = this.playfield.getBoundingClientRect()
     const point = {
       x: (x - field.left) / field.width * arena.width,
@@ -306,7 +343,8 @@ export class UIManager {
         if (Math.hypot(dx, dy) <= buttonGraceDistance) control = aim.control
       }
     }
-    return { point, inside, control, screenY: y, insideGallery }
+    const sticker = hit?.closest<HTMLElement>('[data-sticker]') ?? undefined
+    return { point, inside, control, screen: { x, y }, sticker, insideGallery }
   }
 
   cancelCursor(point?: Point) {
@@ -339,6 +377,6 @@ export class UIManager {
     this.cabinetArt.toggleAttribute('data-shaking', shaking)
     this.gate.toggleAttribute('data-open', shaking)
     this.lever.button.disabled = shaking
-    this.take.disabled = exporting || retained === 0
+    this.take.disabled = shaking || exporting || retained === 0
   }
 }

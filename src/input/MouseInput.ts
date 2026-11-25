@@ -1,15 +1,15 @@
 import type { InputSample, InputSource } from './InputManager'
 
 export class MouseInput implements InputSource {
-  constructor(private readonly surface: HTMLElement) {}
+  constructor(private readonly surface: HTMLElement, private readonly bounds = () => surface.getBoundingClientRect()) {}
 
   connect(emit: (sample: InputSample) => void) {
     const controller = new AbortController()
     const options = { signal: controller.signal }
-    let active: number | undefined
+    let active: { id: number; target: HTMLElement } | undefined
 
     const send = (event: PointerEvent, gesture: InputSample['gesture']) => {
-      const rect = this.surface.getBoundingClientRect()
+      const rect = this.bounds()
       emit({
         position: {
           x: (event.clientX - rect.left) / rect.width,
@@ -21,8 +21,8 @@ export class MouseInput implements InputSource {
     const cancel = () => {
       const pointer = active
       active = undefined
-      if (pointer !== undefined && this.surface.hasPointerCapture(pointer)) {
-        this.surface.releasePointerCapture(pointer)
+      if (pointer?.target.hasPointerCapture(pointer.id)) {
+        pointer.target.releasePointerCapture(pointer.id)
       }
       emit({ gesture: 'lost' })
     }
@@ -30,16 +30,17 @@ export class MouseInput implements InputSource {
     this.surface.addEventListener('pointerdown', (event) => {
       if (event.button !== 0 || !event.isPrimary || active !== undefined) return
       if (event.target instanceof Element && event.target.closest('[data-native]')) return
-      active = event.pointerId
-      this.surface.setPointerCapture(active)
+      const target = event.target instanceof Element ? event.target.closest('dialog') ?? this.surface : this.surface
+      active = { id: event.pointerId, target }
+      target.setPointerCapture(event.pointerId)
       send(event, 'pinch')
     }, options)
     this.surface.addEventListener('pointermove', (event) => {
-      if (!event.isPrimary || (active !== undefined && event.pointerId !== active)) return
+      if (!event.isPrimary || (active && event.pointerId !== active.id)) return
       send(event, active === undefined ? 'open' : 'pinch')
     }, options)
     this.surface.addEventListener('pointerup', (event) => {
-      if (active !== event.pointerId) return
+      if (active?.id !== event.pointerId) return
       active = undefined
       send(event, 'open')
     }, options)

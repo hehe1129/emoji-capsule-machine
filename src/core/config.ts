@@ -2,9 +2,10 @@ export const exhibit = { width: 1920, height: 1080 } as const
 export const cabinet = {
   x: 247, y: 145, width: 560, height: 780,
   chamber: { x: 60, y: 152, width: 440, height: 370 },
-  tray: { x: 195, y: 522, width: 170, height: 182 },
+  tray: { x: 211, y: 522, width: 138, height: 149 },
 } as const
-export const posterWall = { x: 815, y: 173, width: 760, height: 752 } as const
+export const posterWall = { x: 844, y: 73, width: 760, height: 752 } as const
+export type LidSide = 'left' | 'right'
 export const arena = { width: cabinet.chamber.width, height: cabinet.chamber.height, radius: 22 }
 export const hatchX = cabinet.tray.x - cabinet.chamber.x
 export const hatchEnd = hatchX + cabinet.tray.width
