@@ -32,6 +32,10 @@ export async function createHandRecognizer() {
         position.x += hand[index].x / palmIndices.length
         position.y += hand[index].y / palmIndices.length
       }
+      const thumb = hand[4]
+      const index = hand[8]
+      position.x = position.x * 0.22 + (thumb.x + index.x) * 0.39
+      position.y = position.y * 0.22 + (thumb.y + index.y) * 0.39
       const points = result.worldLandmarks[0]
       const world = points?.length >= 21 ? points : undefined
       const landmarks = world ?? hand
@@ -40,7 +44,7 @@ export async function createHandRecognizer() {
         distance(landmarks[5], landmarks[17], aspect))
       const pinchRatio = distance(landmarks[4], landmarks[8], aspect) / palmSize
       if (![position.x, position.y, pinchRatio].every(Number.isFinite)) return
-      // Finger distance controls the grip; the palm center keeps aiming steady.
+      // Blend the fingertip midpoint with a small palm contribution to stabilize aim.
       return { position, pinchRatio }
     },
     close: () => recognizer.close(),

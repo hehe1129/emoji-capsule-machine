@@ -1,85 +1,103 @@
 <!doctype html>
 <html lang="zh-CN">
-  <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta http-equiv="Content-Security-Policy" content="connect-src 'self'">
-    <meta name="theme-color" content="#9991ec">
-    <link rel="icon" href="data:,">
-    <title>扭蛋黄</title>
-  </head>
-  <body>
-    <main class="machine" id="machine">
-      <div class="cabinet" id="cabinet">
-        <div class="fastener" aria-hidden="true"></div>
-        <h1 class="brand" aria-label="扭蛋黄"></h1>
-        <div class="operator-controls" data-native>
-          <button id="camera-toggle" type="button" aria-label="启用摄像头" title="启用摄像头" aria-pressed="false" disabled>
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
-              <rect x="3.5" y="5.5" width="17" height="13" rx="2"/>
-              <circle cx="12" cy="12" r="3"/>
-            </svg>
-          </button>
-          <details id="debug">
-            <summary aria-label="调试设置" title="调试设置">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
-                <path d="M4 6h16M4 12h16M4 18h16"/>
-                <circle cx="8" cy="6" r="2"/><circle cx="16" cy="12" r="2"/><circle cx="11" cy="18" r="2"/>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Content-Security-Policy" content="connect-src 'self'">
+  <meta name="theme-color" content="#fbf1e6">
+  <link rel="icon" href="data:,">
+  <title>扭蛋黄</title>
+</head>
+<body>
+<main id="machine" class="surface" aria-label="扭蛋黄展览">
+  <div class="fit" id="fit">
+    <div class="world" id="world" data-view="overview">
+      <div class="room" aria-hidden="true"><div class="floor"></div><div class="ground-shadow"></div></div>
+      <section class="cabinet" id="cabinet" aria-label="红色扭蛋机">
+        <div class="cabinet-art" id="cabinet-art">
+          <svg class="cabinet-shell" viewBox="0 0 560 780" aria-hidden="true">
+            <path fill="#e4edf0" d="M58 140H502V536H58Z"/>
+            <path fill="none" stroke="#111113" stroke-width="12" d="M60 132V533M500 132V533"/>
+            <path fill="#ff2f27" stroke="#111113" stroke-width="13" stroke-linejoin="round"
+              d="M60 513H500L550 726V761Q550 774 537 774H23Q10 774 10 761V726Z"/>
+            <path fill="none" stroke="#111113" stroke-width="7" d="M10 731H550"/>
+            <path fill="#e62b25" d="M17 735H543V760Q543 767 537 767H23Q17 767 17 760Z"/>
+          </svg>
+          <div id="playfield" class="playfield" aria-label="玻璃主仓"></div>
+          <div id="collector" class="collector" role="group" aria-label="滞留区"></div>
+          <div class="chamber-floor" aria-hidden="true"></div>
+          <div id="retention-gate" class="retention-gate" aria-hidden="true"></div>
+          <div id="tray-trim" class="tray-trim" aria-hidden="true"></div>
+          <div id="machine-commands" class="machine-commands" inert>
+            <button id="lid" class="lid-hit" type="button" aria-label="按住顶盖投放" title="按住顶盖投放" aria-pressed="false">
+              <svg viewBox="0 0 560 165" aria-hidden="true">
+                <path fill="#ff3027" stroke="#111113" stroke-width="13" stroke-linejoin="round"
+                  d="M52 67 279 7q2-1 6 0l219 60q9 3 13 14l17 50v14q0 10-10 10H35q-10 0-10-10v-14l17-51q4-10 10-13Z"/>
+                <path fill="none" stroke="#111113" stroke-width="6" d="M27 115H530"/>
               </svg>
-            </summary>
-            <div class="debug-panel">
-              <fieldset class="hand-settings">
-                <legend>手势校准</legend>
-                <p id="hand-status">摄像头未启动。</p>
-                <div id="hand-preview" class="hand-preview" hidden></div>
-                <label for="hand-device">摄像头设备</label>
-                <select id="hand-device"><option value="">系统默认</option></select>
-                <button id="hand-reconnect" type="button" disabled>连接摄像头</button>
-                <div id="hand-settings"></div>
-                <label><input id="hand-mirror" type="checkbox" checked> 水平镜像</label>
-              </fieldset>
-              <fieldset><legend>物理</legend><div id="settings"></div></fieldset>
-            </div>
-          </details>
-          <p id="camera-status" role="status" class="sr-only" hidden></p>
+            </button>
+            <button id="draw" class="lever" type="button" aria-keyshortcuts="ArrowDown" aria-label="下拉摇杆" title="下拉摇杆">
+              <span class="lever-track" aria-hidden="true"><span class="lever-base"></span><span class="lever-arm"><span class="lever-knob"></span></span></span>
+            </button>
+            <button id="take" class="take" type="button" data-native data-hand disabled>带走!</button>
+          </div>
         </div>
-
-        <section id="channels" class="channels" aria-label="五个 Emoji 投放通道"></section>
-
-        <section id="playfield" class="playfield" aria-label="主交互仓">
-          <div class="glass-rim" aria-hidden="true"></div>
-          <p id="empty-message" class="load-error" role="alert" hidden></p>
-        </section>
-
-        <button id="draw" class="lever" type="button" data-native aria-keyshortcuts="ArrowDown"
-          aria-label="下拉摇杆" title="下拉摇杆" disabled>
-          <span class="lever-track" aria-hidden="true">
-            <span class="lever-base"></span>
-            <span class="lever-arm"><span class="lever-knob"></span></span>
-          </span>
-        </button>
-
-        <div class="drive-gears" aria-hidden="true">
-          <img src="%BASE_URL%art/gear.svg" alt=""><img src="%BASE_URL%art/gear.svg" alt="">
-        </div>
-        <div class="vents" aria-hidden="true"></div>
-
-        <section class="collector" id="collector" aria-label="抽取结果滞留区">
-          <div class="retention-gate" id="retention-gate" aria-hidden="true"></div>
-        </section>
-        <button id="take" class="take" type="button" data-native data-hand disabled>带走！</button>
-        <p id="notice" class="sr-only" role="status"></p>
+        <button id="enter-machine" class="scene-entry" type="button" data-native data-hand aria-label="进入扭蛋机"></button>
+      </section>
+      <section class="poster-wall" id="poster-wall" aria-label="海报墙">
+        <div class="poster-viewport" id="poster-viewport" tabindex="0" inert><div class="poster-grid"></div></div>
+        <button id="enter-wall" class="scene-entry" type="button" data-native data-hand aria-label="进入海报墙"></button>
+      </section>
+    </div>
+  </div>
+  <button id="back" class="icon-button back" type="button" data-native data-hand aria-label="返回总览" title="返回总览" hidden>
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" aria-hidden="true"><path d="m12 5-7 7 7 7M5 12h14"/></svg>
+  </button>
+  <div class="operator-controls" data-native>
+    <button id="camera-toggle" class="icon-button" data-hand type="button" aria-label="启用摄像头" title="启用摄像头" aria-pressed="false" disabled>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="5.5" width="18" height="13" rx="2"/><circle cx="12" cy="12" r="3"/></svg>
+    </button>
+    <button id="help" class="icon-button help" type="button" data-hand aria-label="操作说明" title="操作说明">?</button>
+    <details id="debug">
+      <summary class="icon-button" aria-label="调试设置" title="调试设置">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"/><circle cx="8" cy="6" r="2" fill="#fff9ee"/><circle cx="16" cy="12" r="2" fill="#fff9ee"/><circle cx="11" cy="18" r="2" fill="#fff9ee"/></svg>
+      </summary>
+      <div class="debug-panel">
+        <fieldset>
+          <legend>手势校准</legend>
+          <p id="hand-status">摄像头未启动。</p>
+          <div id="hand-preview" class="hand-preview" hidden></div>
+          <label for="hand-device">摄像头设备</label>
+          <select id="hand-device"><option value="">系统默认</option></select>
+          <button id="hand-reconnect" type="button" disabled>连接摄像头</button>
+          <div id="hand-settings"></div>
+          <label><input id="hand-mirror" type="checkbox" checked> 水平镜像</label>
+        </fieldset>
+        <fieldset><legend>物理</legend><div id="settings"></div></fieldset>
       </div>
-      <div id="cursor" class="cursor" aria-hidden="true" hidden></div>
-    </main>
-    <dialog id="souvenir" aria-labelledby="souvenir-title">
-      <h2 id="souvenir-title" class="sr-only">扭蛋黄纪念卡</h2>
-      <div class="souvenir-controls">
-        <button id="close-card" type="button" data-hand>关闭</button>
-        <a id="save-card" data-hand download="扭蛋黄-纪念卡.png">下载 PNG</a>
-      </div>
-    </dialog>
-    <footer class="credits sr-only"><a href="https://github.com/jdecked/twemoji" tabindex="-1">Twemoji · Twitter, Inc. 和贡献者</a> / <a href="https://creativecommons.org/licenses/by/4.0/" tabindex="-1">CC BY 4.0</a></footer>
-    <script type="module" src="/src/main.ts"></script>
-  </body>
+    </details>
+  </div>
+  <p id="camera-status" role="status" class="sr-only" hidden></p>
+  <p id="notice" class="notice" role="status" hidden></p>
+  <div id="cursor" class="cursor" aria-hidden="true" hidden></div>
+  <dialog id="souvenir" aria-label="纪念海报">
+    <div id="poster-view" class="poster-view"></div>
+    <div class="dialog-controls">
+      <button id="close-card" type="button" data-native data-hand aria-label="关闭海报"><span aria-hidden="true">×</span></button>
+      <a id="save-card" data-native data-hand download="扭蛋黄-纪念海报.png" hidden>下载 PNG</a>
+    </div>
+  </dialog>
+  <dialog id="instructions" aria-label="操作说明">
+    <div class="instructions">
+      <button id="close-help" type="button" data-native data-hand aria-label="关闭说明"><span aria-hidden="true">×</span></button>
+      <h1>扭蛋黄</h1>
+      <p>用鼠标或摄像头捏合选中扭蛋机和海报墙。</p>
+      <p>按住红色顶盖投放 Emoji，抓起它们碰一碰。向下拉黄色摇杆抽取，再点「带走!」生成海报。</p>
+      <p>把光标移到海报墙上缘或下缘浏览。点选海报可以放大。</p>
+      <p id="archive-mode" role="status"></p>
+    </div>
+  </dialog>
+</main>
+<script type="module" src="/src/main.ts"></script>
+</body>
 </html>

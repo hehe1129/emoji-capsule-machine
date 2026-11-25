@@ -28,6 +28,7 @@ export interface HandObservation {
 const dwellMs: Record<Gesture, number> = { open: 50, pinch: 45 }
 const evidenceGapMs = 125
 const lossGraceMs = 240
+const gripLossGraceMs = 100
 const cursorGraceMs = 420
 
 function normalizeAxis(value: number, margin: number, center = 0.5) {
@@ -87,7 +88,7 @@ export class GestureFilter {
       this.reset()
       return { gesture: 'lost', trackingTimeout: { at: now, hidden: true } }
     }
-    if (gap < lossGraceMs || this.trackingInterrupted) return
+    if (gap < (this.stable === 'pinch' ? gripLossGraceMs : lossGraceMs) || this.trackingInterrupted) return
     // Release a held item on schedule, but keep the cursor parked through brief tracking loss.
     this.resetPose()
     this.trackingInterrupted = true

@@ -1,5 +1,4 @@
 import type { EmojiEntity } from '../emoji/EmojiEntity'
-import { catalog } from '../emoji/catalog'
 import { reactionRules } from './ReactionRules'
 
 export class ReactionEngine {
@@ -26,7 +25,8 @@ export class ReactionEngine {
   match(first: EmojiEntity, second: EmojiEntity, cooldown: number) {
     for (const rule of reactionRules) {
       const [actor, ingredient] = first.kind === rule.actor ? [first, second] : [second, first]
-      if (actor.kind !== rule.actor || ingredient.kind !== rule.ingredient || ingredient.result) continue
+      if (actor.kind !== rule.actor || ingredient.kind !== rule.ingredient || ingredient.result ||
+        actor.retained || ingredient.retained) continue
       const count = actor.reactionCounts?.[rule.effect] ?? 0
       if (count >= (rule.growth?.steps ?? rule.maxUses ?? 1)) continue
       if (rule.consumeIngredient === false) {
@@ -42,8 +42,6 @@ export class ReactionEngine {
       actor.result = {
         name: counts.grow && counts.sleep ? '长大的小鸡（睡着了）' : rule.name,
         ingredients,
-        art: rule.art ?? catalog[actor.kind].art,
-        badge: rule.badge ?? actor.result?.badge,
       }
       actor.reaction = { elapsed: 0, duration: rule.duration, effect: rule.effect }
       return { actor, ingredient, rule }

@@ -1,11 +1,10 @@
-import { arena, cabinet, shakeDuration, tubeCenters, type Settings } from './config'
+import { arena, hatchX, hatchEnd, shakeDuration, type Settings } from './config'
 import { PhysicsManager, physicsStep } from '../physics/PhysicsManager'
 import { ReactionEngine } from '../reactions/ReactionEngine'
 import type { EmojiEntity } from '../emoji/EmojiEntity'
-import type { EmojiKind } from '../emoji/catalog'
+import { randomKind } from '../emoji/catalog'
 import type { Point } from '../input/InputManager'
 import { captureCapsule, type CapsuleResult } from '../capsule/CapsuleResult'
-import { channelCapacity, randomKind } from '../emoji/EmojiChannels'
 
 const throwSmoothing = 1 - Math.exp(-physicsStep / 30)
 const maxDragSpeed = 1.65 // scene units per millisecond
@@ -14,8 +13,6 @@ export class AppController {
   private readonly physics = new PhysicsManager()
   private readonly reactions = new ReactionEngine()
   private readonly objects = new Map<number, EmojiEntity>()
-  private readonly stocks: EmojiEntity[][] = tubeCenters.map(() => [])
-  private readonly feeding = new Map<number, EmojiEntity>()
   private held?: { entity: EmojiEntity; offset: Point; target?: Point; previous: Point; velocity: Point }
   private accumulated = 0
   private shakeStarted?: number
@@ -23,31 +20,23 @@ export class AppController {
   notice = ''
 
   constructor(readonly settings: Settings) {
-    this.stocks.forEach((stock, index) => {
-      for (let slot = 0; slot < channelCapacity; slot++) {
-        this.stockTube(index, -arena.radius - 2 - slot * (arena.radius * 2 + 2), stock.at(-1)?.kind)
-      }
-    })
+    for (let index = 0; index < 10; index++) {
+      const x = 48 + index % 5 * 85 + Math.random() * 18
+      const y = arena.height - 36 - Math.floor(index / 5) * 56
+      this.spawn(x, y, false)
+    }
   }
 
   get entities() {
     return this.objects.values()
   }
 
-  get count() {
-    return this.objects.size - this.stocks.reduce((total, stock) => total + stock.length, 0)
-  }
-
   get retainedCount() {
     let count = 0
     for (const entity of this.entities) {
-      if (this.isRetained(entity)) count++
+      if (entity.retained) count++
     }
     return count
-  }
-
-  gateOpen(index: number) {
-    return this.feeding.has(index)
   }
 
   get heldId() {
@@ -58,48 +47,23 @@ export class AppController {
     return this.shakeStarted !== undefined
   }
 
-  releaseChannel(index: number) {
-    if (this.feeding.has(index)) return
-    if (this.count >= this.settings.maxEmoji) {
+  drop() {
+    if (this.objects.size >= this.settings.maxEmoji) {
       this.notice = '机器已满。'
-      return
+      return false
     }
-    const bottom = this.stocks[index].shift()
-    if (!bottom) return
-    bottom.channel = undefined
-    bottom.spawnRemaining = 940
-    this.feeding.set(index, bottom)
-    this.physics.feed(bottom.body, index)
+    this.spawn(arena.radius + 10 + Math.random() * (arena.width - arena.radius * 2 - 20), -arena.radius - 2, true)
     this.notice = ''
+    return true
   }
 
-  private stockTube(index: number, y: number, neighbor?: EmojiKind) {
-    const body = this.physics.create({ x: tubeCenters[index], y }, this.settings)
-    const entity = { body, kind: randomKind(neighbor), radius: arena.radius, channel: index, spawnRemaining: 0 }
-    this.stocks[index].push(entity)
+  private spawn(x: number, y: number, active: boolean) {
+    const body = this.physics.create({ x, y }, this.settings)
+    const entity = { body, kind: randomKind(), radius: arena.radius, spawnRemaining: active ? 420 : 0 }
     this.objects.set(body.id, entity)
   }
 
-  private updateChannels() {
-    for (const [index, entity] of this.feeding) {
-      if (this.objects.has(entity.body.id) && entity.body.position.y < entity.radius + 2) continue
-      this.physics.clearFeed(entity.body)
-      this.feeding.delete(index)
-    }
-    const inlet = -cabinet.chamber.y - arena.radius
-    this.stocks.forEach((stock, index) => {
-      if (stock.length >= channelCapacity) return
-      const top = stock.at(-1)
-      if (top && top.body.position.y - top.radius < inlet + arena.radius + 3) return
-      this.stockTube(index, inlet, top?.kind)
-    })
-  }
-
   private remove(entity: EmojiEntity) {
-    if (entity.channel !== undefined) {
-      const stock = this.stocks[entity.channel]
-      stock.splice(stock.indexOf(entity), 1)
-    }
     this.physics.remove(entity.body)
     this.objects.delete(entity.body.id)
   }
@@ -109,7 +73,7 @@ export class AppController {
     let closest: EmojiEntity | undefined
     let minDistance = Infinity
     for (const entity of this.entities) {
-      if (entity.channel !== undefined || entity.body.position.y < entity.radius || entity.body.position.y > arena.height) continue
+      if (entity.retained || entity.body.position.y < entity.radius || entity.body.position.y > arena.height) continue
       const distance = Math.hypot(entity.body.position.x - point.x, entity.body.position.y - point.y)
       if (distance <= entity.radius + this.settings.grabRange && distance <= minDistance) {
         closest = entity
@@ -181,11 +145,7 @@ export class AppController {
   }
 
   capture() {
-    return Array.from(this.entities).filter(entity => this.isRetained(entity)).map(captureCapsule)
-  }
-
-  private isRetained(entity: EmojiEntity) {
-    return entity.body.position.y - entity.radius >= arena.height
+    return Array.from(this.entities).filter(entity => entity.retained).map(captureCapsule)
   }
 
   tune() {
@@ -197,13 +157,19 @@ export class AppController {
   tick(now: number, delta: number) {
     if (this.shakeStarted !== undefined && now - this.shakeStarted >= shakeDuration) {
       this.shakeStarted = undefined
+      for (const entity of this.entities) {
+        const { x, y } = entity.body.position
+        if (!entity.retained && x > hatchX && x < hatchEnd && y >= arena.height) {
+          this.physics.finishPassage(entity.body)
+        }
+      }
       this.physics.setHatch(false)
     }
     const phase = this.shakeStarted === undefined ? undefined : (now - this.shakeStarted) / 53
     if (phase !== undefined && now >= this.nextJolt) {
       this.nextJolt = now + 310
-      for (const { body } of this.entities) {
-        if (!body.isStatic) this.physics.shake(body, phase)
+      for (const { body, retained } of this.entities) {
+        if (!body.isStatic) this.physics.shake(body, phase, !!retained)
       }
     }
     this.accumulated += Math.min(delta, 64)
@@ -230,12 +196,18 @@ export class AppController {
         }
         if (rule.motion === 'settle') this.physics.settle(actor.body)
         if (rule.motion === 'boost') this.physics.boost(actor.body)
+        if (rule.effect === 'chase') this.physics.chase(actor.body, ingredient.body)
         this.notice = rule.message
       }
       for (const entity of this.entities) {
         const { body, radius } = entity
         entity.spawnRemaining = Math.max(0, entity.spawnRemaining - physicsStep)
-        const state = this.physics.contain(body, radius, entity.channel)
+        const { x, y } = body.position
+        if (!entity.retained && x >= hatchX && x <= hatchEnd && y - radius >= arena.height + 6) {
+          entity.retained = true
+          this.physics.retain(body)
+        }
+        const state = this.physics.contain(body, radius, !!entity.retained)
         if (state === 'recovered') this.notice = '一个 Emoji 越过边界，已移回容器。'
         if (state === 'invalid') {
           if (this.heldId === body.id) this.held = undefined
@@ -243,7 +215,6 @@ export class AppController {
           this.notice = '一个 Emoji 的运动数据异常，已移出容器。'
         }
       }
-      this.updateChannels()
     }
   }
 }

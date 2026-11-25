@@ -1,37 +1,17 @@
 # 扭蛋黄
 
-面向博物馆大屏的交互作品。当前版本支持用鼠标或摄像头手势完成投放、拖拽和抽取。
+一台手势互动扭蛋机和一面共同积累作品的海报墙。
 
-[打开扭蛋黄在线 Demo](https://emoji-capsule-machine.pages.dev/)
+## 本地运行
 
-## 本地启动
-
-Windows 上已安装项目依赖时，双击 `Start Preview.cmd` 即可启动并打开 [http://127.0.0.1:5181/](http://127.0.0.1:5181/)。使用时保留启动窗口。电脑重启后再双击一次。
-
-首次设置需要 Node.js 22.12+。在项目目录打开 PowerShell。
+Windows 安装 Node.js 22.12 或更新版本。首次用 PowerShell 运行：
 
 ```powershell
 npm.cmd ci
 npm.cmd run dev
 ```
 
-手动运行开发服务时，打开终端显示的地址，默认是 [http://localhost:5173/](http://localhost:5173/)。
-
-按住五个红色通道按钮之一，阀门每 0.7 秒放行一枚 Emoji。松手后停止放行，已开始掉落的 Emoji 会继续往下掉。各通道独立补货，并避开相邻的反应组合。鼠标可以拖动主仓物体，也可用键盘聚焦通道后按住空格或回车。
-
-拉下右侧红色摇杆并松手，装置摇晃 3 秒。通道、主仓和滞留区共用一个 Matter.js 世界。实际从开口跌落的 Emoji 会带着原速度进入滞留区，并继续与里面的 Emoji 碰撞。点击「带走！」预览并下载 PNG，生成成功后会清走这张卡上的 Emoji。聚焦摇杆后也可按 ↓ 触发。
-
-右上角「调试设置」可实时调整重力、弹性、摩擦、容量、光标平滑、抓取容差和反应冷却。已放入的 Emoji 会保留，降低容量会限制之后的投放。使用 [展览预览参数](http://localhost:5173/?exhibit=1) 可隐藏调试入口。退出此预览时删掉 URL 参数即可。
-
-## 摄像头手势
-
-1. 用 Edge 或 Chrome 打开 HTTPS 网页或本机预览地址，点击右上角「启用摄像头」并允许访问。如果内置预览无法授权摄像头，请直接在浏览器打开网页。
-2. 让一只手完整入镜，光标跟随手掌中心。分开拇指和食指时可以瞄准，捏合时抓取 Emoji、按住通道按钮或拉动摇杆，再分开手指释放。丢手时会自动松开。重新入镜时请先分开手指。
-3. 用「调试设置 → 手势校准」调整捏合阈值、水平镜像、水平和垂直裁边比例、手部高度，以及手势光标平滑。默认工作范围已向摄像头画面的下方移动。手还需要完整入镜，若仍觉得需要抬手，可把「手部高度」的数值调大。增大裁边可用更小的手部移动覆盖同一屏幕范围。校准值在当前页面内生效。
-4. 点击「切回鼠标」可关闭摄像头。摄像头权限、设备或播放出错时，界面会提示原因并切回鼠标。可在手势校准面板查看连接、模型和识别状态。
-5. 「调试设置 → 手势校准」中的摄像头设备列表支持选择系统默认与浏览器可访问的设备。接入 USB 摄像头后如只显示「系统默认」，先点「连接摄像头」并授权，再选择外接设备。摄像头已启用时，切换设备会重新连接。采集模块位于 `src/input/CameraCapture.ts`，可通过 `CameraCapture.open()` 提供其他媒体流，手势模型无需调整。
-
-## 类型检查与生产构建
+打开终端显示的本机地址。依赖装好后还可双击 `Start Preview.cmd`，浏览器会打开 5181 端口。使用时保留启动窗口。
 
 ```powershell
 npm.cmd run typecheck
@@ -39,46 +19,53 @@ npm.cmd run build
 npm.cmd run preview
 ```
 
-预览默认地址为 [http://localhost:4173/](http://localhost:4173/)。换电脑时可复制源码及锁文件，在新机器上运行 `npm.cmd ci` 并重新构建。也可以复制 `dist/`，通过目标电脑的本地静态 HTTP 服务提供文件。首次安装需要 npm 仓库访问。构建产物包含 MediaPipe WASM、模型和表情素材，运行时无需互联网。摄像头画面仅在浏览器本地处理，页面的连接策略会阻止 SDK 向外部发送使用指标。
+Vite 本地预览使用浏览器存储。两个标签页能查看同一份本地记录，换设备或浏览器配置后独立。
 
-表情使用 Twitter, Inc. 和贡献者制作的 [Twemoji v17.0.3](https://github.com/jdecked/twemoji/tree/v17.0.3)，素材按 [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) 授权。原始 SVG 随项目发布在 `public/twemoji/`。表情本体是静态素材，程序只在投放和融合时播放表现动画。
+## 展览操作
 
-## Cloudflare Pages 部署
+- 点击红色机器或海报墙进入放大视角，左上箭头返回。两处共用一个舞台，返回会保留机器里的状态和作品。
+- 按住红色顶盖立即投放一枚，之后每 0.7 秒一枚。松开或切换窗口时关闭顶盖。用鼠标拖动或摄像头捏合抓取表情，碰撞可触发原有五组反应及猫追鱼。
+- 向下拉黄色摇杆，松手后摇晃 3 秒并打开隔板。主仓和滞留区共用 Matter.js 世界，真实穿过开口的 Emoji 被单向挡板保留。
+- 点「带走!」生成竖版海报。归档成功后才清空本次结果。海报可预览、下载 PNG，也可在墙上再次打开。靠近墙的上下沿滚动，移开或捏合时暂停。
+- 右上摄像头图标可启用 MediaPipe。拇指和食指分开用来移动和松手，捏合表示按住。摄像头画面留在浏览器。本地 HTTP 或线上 HTTPS 可授权。用 `?exhibit=1` 隐藏调试入口。
+- 键盘可以 Tab 选择入口与按钮，空格或回车长按顶盖，聚焦摇杆按 ↓ 抽取，Esc 关闭海报和说明。
 
-将 GitHub 仓库连接到 Cloudflare 控制台的 **Workers & Pages → Create application → Pages → Connect to Git**。首次连接时授权 GitHub，并选择本项目仓库。 [Cloudflare Pages Git 集成指南](https://developers.cloudflare.com/pages/get-started/git-integration/)
+## Cloudflare Pages 与共享海报墙
 
-| 配置项 | 值 |
-| --- | --- |
-| Production branch | `main` |
-| Root directory | 仓库根目录，保持默认 |
-| Build command | `npm run build` |
-| Build output directory | `dist` |
-| Node.js | 从 `.node-version` 读取 |
+GitHub 继续使用 `main`。Cloudflare Pages 保持已有 Git 集成，构建命令 `npm run build`、产物目录 `dist`。仓库根目录 `functions/api/posters.ts` 提供 JSON 公共档案接口，仅 `/api/posters` 被 Pages Functions 接管。D1 保存规范化的 Emoji 种类、融合状态、排版、作品 ID 和时间。图片由任意访客按原排版重建，无需 R2 或图片上传。
 
-首次发布选择 **Save and Deploy**。部署成功后，从 **Deployments** 打开分配的 `pages.dev` HTTPS 地址。保持 `main` 的自动生产部署开启。每次推送到 `main` 后，在 **Deployments** 核对提交编号和构建状态。
+首次为一个环境启用公共墙：
 
-页面由 Vite 构建为单页静态站点，发布在域名根路径。MediaPipe 模型和 WASM 都从本站加载。每个标签页分别创建游戏场景，刷新会开始新一轮。访客打开网页即可使用鼠标，摄像头在主动点击并授权后启用。展览模式可以在地址后加 `?exhibit=1`，并用浏览器全屏功能展示。
+1. 在 Cloudflare 的 **Storage & Databases → D1** 中创建 `egg-posters`。
+2. 从项目目录用已授权的 Cloudflare CLI 初始化数据库。
 
-目前无需环境变量或服务端。未来如果接入 AI，可以让浏览器请求同源的 Pages Functions `/api/` 路径，并在 Cloudflare 的服务端密钥配置中保存 API 密钥。
+   ```powershell
+   npx wrangler d1 execute egg-posters --remote --file migrations/0001_posters.sql
+   ```
 
-## 模块
+3. 在 **Workers & Pages → emoji-capsule-machine → Settings → Bindings** 中为 Production 添加 D1 绑定，变量名 `POSTERS`，指向该数据库。为预览分支单独配置数据库可避免测试数据进入正式墙。
+4. 重新部署。浏览器打开 `/api/posters` 应返回 `"mode": "shared"`。用两个独立浏览器配置验证写入和读取。
 
-| 路径 | 职责 |
-| --- | --- |
-| `index.html`、`src/ui/` | 投放区、调试设置、容器外观、出口、状态提示和屏幕命中测试 |
-| `src/main.ts` | 装配输入、业务逻辑及渲染，驱动帧循环 |
-| `src/core/AppController.ts`、`config.ts` | 本轮对象和抽取状态、交互操作、舞台尺寸和参数 |
-| `src/input/` | 摄像头采集、MediaPipe 推理、独立手势过滤和校准、光标平滑、鼠标指针捕获 |
-| `src/emoji/` | Emoji 目录、实体以及五条通道的补位与间隔 |
-| `src/physics/PhysicsManager.ts` | Matter.js 固定步长、边界、抓取期间禁用碰撞、速度与越界保护 |
-| `src/render/SceneRenderer.ts` | 同步动画表情与物理坐标，用 PixiJS 渲染反应特效 |
-| `src/reactions/` | 匹配和管理配置化反应，记录结果来源、限制重复触发 |
-| `src/capsule/` | 实体进入滞留区后的结果快照与纪念图 PNG 生成 |
+未绑定 D1 时，API 明确返回本地模式。绑定存在但失败时会报告错误，保留滞留区和原作品编号供重试。媒体模型、WASM 和 Emoji 都由当前域名提供。
 
-## API 与阶段边界
+使用 Wrangler 本地测试实际 Functions 与独立的 SQLite/D1。下列配置写入被 Git 忽略的目录，可直接在本机运行：
 
-- PixiJS 8 使用异步 `Application.init()` 和 `app.canvas`。三个区域使用同一套 1600 × 900 的机身坐标，CSS 等比缩放视口。参见 [PixiJS Application](https://pixijs.com/8.x/guides/components/application)。
-- Matter.js 0.20 通过固定步长调用 `Engine.update`，收集 `collisionStart` 后再修改对象，避免在碰撞回调中直接改世界对象。参见 [Matter.Engine](https://brm.io/matter-js/docs/classes/Engine.html)。
-- `HandTracking.ts` 管理摄像头和识别生命周期，`MediaPipeRecognizer.ts` 读取 SDK 输出，`GestureFilter.ts` 管理判定、防抖、镜像及裁边。手势模块仅向 `InputManager` 发送归一化坐标和松开、捏合、丢手状态。屏幕命中、投放与抓取继续通过同一套交互入口完成。模型来源见 [Google 官方 Gesture Recognizer 模型](https://storage.googleapis.com/mediapipe-models/gesture_recognizer/gesture_recognizer/float16/1/gesture_recognizer.task)。
-- 五条反应由规则表配置。每只小鸡可吃十条虫子，睡着后也能长大。闪电会留在场内，同一只乌龟可以再次碰到它并加速，每一对乌龟和闪电之间有反应冷却。
-- 捏合时会短暂保持原来的瞄准点。拖动 Emoji 后立刻松手可以把它抛出，停稳后松手则会自然下落。
+```powershell
+npm.cmd run build
+New-Item -ItemType Directory -Force .wrangler | Out-Null
+$localD1 = 'b0c70c61-c330-46f1-bcd2-3bf49da4af52'
+$binding = @{ name = 'egg-exhibit-local'; compatibility_date = '2025-08-01'; d1_databases = @(@{ binding = 'POSTERS'; database_name = 'egg-posters-local'; database_id = $localD1 }) }
+$binding | ConvertTo-Json -Depth 4 | Set-Content -Encoding ascii .wrangler/exhibit-local.json
+npx wrangler d1 execute POSTERS --local --config .wrangler/exhibit-local.json --persist-to .wrangler/exhibit-state --file migrations/0001_posters.sql
+npx wrangler pages dev dist --ip 127.0.0.1 --port 8793 --d1 "POSTERS=$localD1" --persist-to .wrangler/exhibit-state
+```
+
+用两个浏览器配置打开 `http://127.0.0.1:8793/`，可检查同一张海报是否出现在两个会话上。Vite 预览无需 Cloudflare 账号。
+
+## 源码与素材
+
+- `public/original-emoji/` 存放用户素材拆出的 11 张透明 PNG。画像本体使用原图，融合反馈用缩放、旋转与本套其他图形组合。
+- `src/core/`、`src/physics/`、`src/reactions/` 管理坐标、共享物理区域及规则。
+- `src/input/` 管理摄像头、关键点、捏合防抖和统一指针事件。
+- `src/ui/` 管理单一舞台镜头、机器操作、四列海报墙和光标区域滚动。
+- `src/capsule/` 管理物理结果快照、可复现竖版海报和本地／公共归档。

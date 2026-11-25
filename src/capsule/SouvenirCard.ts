@@ -1,62 +1,61 @@
-import type { CapsuleResult } from './CapsuleResult'
-import { emojiImageUrl } from '../emoji/emojiImage'
+import { emojiImageUrl, type EmojiArtwork } from '../emoji/emojiImage'
+import { portrait, posterColors, posterSize, type Poster } from './PosterLayout'
 
-async function loadImage(src: string) {
+const ink = '#111113'
+const title = '扭蛋黄'
+const imageCache = new Map<EmojiArtwork, Promise<HTMLImageElement>>()
+
+function load(kind: EmojiArtwork) {
+  const cached = imageCache.get(kind)
+  if (cached) return cached
   const image = new Image()
-  image.src = src
-  await image.decode()
-  return image
+  image.src = emojiImageUrl(kind)
+  const promise = image.decode().then(() => image).catch(error => {
+    imageCache.delete(kind)
+    throw error
+  })
+  imageCache.set(kind, promise)
+  return promise
 }
 
-export async function createSouvenir(items: readonly CapsuleResult[]): Promise<Blob> {
-  const portraits = await Promise.all(items.map(async ({ art, badge }) => ({
-    art: await loadImage(emojiImageUrl(art)),
-    badge: badge ? await loadImage(emojiImageUrl(badge)) : undefined,
-  })))
-  for (let i = portraits.length - 1; i > 0; i--) {
-    const other = Math.floor(Math.random() * (i + 1))
-    ;[portraits[i], portraits[other]] = [portraits[other], portraits[i]]
-  }
-
+export async function createSouvenir(poster: Poster) {
   const canvas = document.createElement('canvas')
-  canvas.width = 960
-  canvas.height = 720
+  const { width, height } = posterSize
+  canvas.width = width * 2
+  canvas.height = height * 2
   const context = canvas.getContext('2d')
   if (!context) throw new Error('Canvas unavailable')
-  const { width, height } = canvas
-  context.fillStyle = '#9991e9'
+  context.scale(2, 2)
+  const colors = posterColors[poster.palette]
+  context.fillStyle = colors.paper
   context.fillRect(0, 0, width, height)
-  context.fillStyle = '#c9d7f6'
-  context.fillRect(36, 36, width - 72, height - 72)
-  context.strokeStyle = '#211932'
-  context.lineWidth = 4
-  context.strokeRect(36, 36, width - 72, height - 72)
-  const title = await loadImage(import.meta.env.BASE_URL + 'art/dot-title.svg')
-  context.drawImage(title, 350, 66, 260, 260 * title.naturalHeight / title.naturalWidth)
-  context.fillStyle = '#211932'
-  context.textAlign = 'center'
-  context.font = '22px system-ui, sans-serif'
-  context.fillText('本次抽取结果', width / 2, 190)
-  context.font = '18px system-ui, sans-serif'
-  context.fillText('来自扭蛋黄装置', width / 2, 655)
-
-  const columns = Math.ceil(Math.sqrt(items.length * 1.9))
-  const rows = Math.ceil(items.length / columns)
-  const cell = Math.min(840 / columns, 400 / rows, 190)
-  const size = cell * 0.83
-  portraits.forEach(({ art, badge }, i) => {
-    const row = Math.floor(i / columns)
-    const inRow = Math.min(columns, portraits.length - row * columns)
-    const x = width / 2 + ((i % columns) - (inRow - 1) / 2) * cell
-    const y = 420 + (row - (rows - 1) / 2) * cell
+  context.lineWidth = 8
+  context.strokeStyle = ink
+  context.strokeRect(25, 25, 550, 790)
+  context.fillStyle = colors.field
+  context.fillRect(42, 135, 516, 558)
+  context.strokeRect(42, 135, 516, 558)
+  context.fillStyle = ink
+  context.font = '900 67px "Microsoft YaHei", "PingFang SC", sans-serif'
+  context.fillText(title, 46, 104)
+  context.font = '700 22px "Microsoft YaHei", sans-serif'
+  context.fillText('扭蛋黄纪念海报', 46, 747)
+  context.font = '700 19px system-ui'
+  context.fillText('#' + poster.id.slice(0, 8).toUpperCase() + '  /  ' + poster.createdAt.slice(0, 10), 46, 782)
+  const artwork = await Promise.all(poster.stickers.map(async sticker => {
+    const art = portrait(sticker.kind, sticker.state)
+    return { sticker, art, image: await load(art.kind), badge: art.badge && await load(art.badge) }
+  }))
+  for (const { sticker, art, image, badge } of artwork) {
+    const { x, y, size, tilt } = sticker
     context.save()
     context.translate(x, y)
-    context.rotate((Math.random() - 0.5) * 0.5)
-    context.drawImage(art, -size / 2, -size / 2, size, size)
-    if (badge) context.drawImage(badge, size * 0.2, -size * 0.48, size * 0.36, size * 0.36)
+    context.rotate(tilt * Math.PI / 180 + art.tilt)
+    context.drawImage(image, -size / 2, -size / 2, size, size)
+    if (badge) context.drawImage(badge, size * 0.19, -size * 0.53, size * 0.36, size * 0.36)
     context.restore()
-  })
-  return new Promise((resolve, reject) => {
-    canvas.toBlob(blob => blob ? resolve(blob) : reject(new Error('PNG export failed')), 'image/png')
+  }
+  return new Promise<Blob>((resolve, reject) => {
+    canvas.toBlob(blob => blob ? resolve(blob) : reject(new Error('PNG encoding failed')), 'image/png')
   })
 }

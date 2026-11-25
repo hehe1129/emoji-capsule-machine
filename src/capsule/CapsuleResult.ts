@@ -1,20 +1,20 @@
 import type { EmojiEntity } from '../emoji/EmojiEntity'
-import { catalog, type EmojiArt, type EmojiKind } from '../emoji/catalog'
+import type { EmojiKind } from '../emoji/catalog'
 
-export interface CapsuleResult {
+export type CapsuleResult = {
   entityId: number
-  art: EmojiArt
-  badge?: EmojiArt
-  name: string
+  kind: EmojiKind
+  name?: string
   source?: EmojiKind[]
+  state?: Partial<Record<import('../reactions/ReactionRules').ReactionEffect, number>>
 }
 
-export function captureCapsule(chosen: EmojiEntity): CapsuleResult {
+export function captureCapsule(entity: EmojiEntity): CapsuleResult {
   return {
-    entityId: chosen.body.id,
-    art: chosen.result?.art ?? catalog[chosen.kind].art,
-    badge: chosen.result?.badge,
-    name: chosen.result?.name ?? catalog[chosen.kind].name,
-    source: chosen.result && [chosen.kind, ...chosen.result.ingredients],
+    entityId: entity.body.id,
+    kind: entity.kind,
+    name: entity.result?.name,
+    source: entity.result?.ingredients.slice(),
+    state: entity.reactionCounts && { ...entity.reactionCounts },
   }
 }

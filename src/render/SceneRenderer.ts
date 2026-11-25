@@ -1,151 +1,91 @@
-import { Application, Container, Graphics } from 'pixi.js'
+import { Application, Graphics } from 'pixi.js'
 import { arena, cabinet } from '../core/config'
-import { catalog, type EmojiArt } from '../emoji/catalog'
 import { emojiImage } from '../emoji/emojiImage'
 import type { EmojiEntity } from '../emoji/EmojiEntity'
-import type { ReactionEffect } from '../reactions/ReactionRules'
+import { portrait } from '../capsule/PosterLayout'
 
-type Visual = {
-  root: Container
-  ring: Graphics
-  token: HTMLDivElement
-  portrait: HTMLImageElement
-  art: EmojiArt
-  badge?: HTMLImageElement
-}
+const feedbackColors = { grow: 0xffc326, sleep: 0x3886c4, dash: 0xffbf15, soothe: 0xff5545, brighten: 0xf5b422, chase: 0x5ba942 }
 
-const feedbackColors: Record<ReactionEffect, number> = {
-  grow: 0xf9d856,
-  sleep: 0x818cf8,
-  dash: 0xf4a223,
-  soothe: 0xe6749c,
-  brighten: 0xffaf36,
-}
-
-function glassOutline() {
-  const { chamber, tray, tubeCenters, tubeWidth } = cabinet
-  const right = chamber.x + chamber.width
-  const floor = chamber.y + chamber.height
-  const points: [number, number][] = [[chamber.x, chamber.y]]
-  for (const center of tubeCenters) {
-    const left = center - tubeWidth / 2
-    const right = center + tubeWidth / 2
-    points.push([left, chamber.y], [left, 0], [right, 0], [right, chamber.y])
-  }
-  points.push([right, chamber.y], [right, tray.y + tray.height],
-    [tray.x, tray.y + tray.height], [tray.x, floor], [chamber.x, floor])
-  return 'polygon(' + points.map(([x, y]) => x + 'px ' + y + 'px').join(', ') + ')'
-}
+type Visual = { root: HTMLDivElement; image: HTMLImageElement; badge?: HTMLImageElement }
 
 export class SceneRenderer {
   private readonly app = new Application()
+  private readonly graphics = new Graphics()
   private readonly visuals = new Map<number, Visual>()
-  private readonly emojiLayer = document.createElement('div')
+  private readonly layer = document.createElement('div')
 
   async init(host: HTMLElement) {
     await this.app.init({
-      width: cabinet.width,
-      height: cabinet.height,
-      resolution: Math.min(devicePixelRatio, 2),
-      backgroundAlpha: 0,
-      antialias: true,
-      autoStart: false,
+      width: cabinet.width, height: cabinet.height, resolution: Math.min(devicePixelRatio, 2),
+      backgroundAlpha: 0, antialias: true, autoStart: false,
     })
-    this.app.canvas.setAttribute('aria-hidden', 'true')
-    this.app.canvas.className = 'effects-layer'
-    const layer = this.emojiLayer
+    this.app.stage.addChild(this.graphics)
+    const layer = this.layer
     layer.className = 'emoji-layer'
     layer.setAttribute('aria-hidden', 'true')
-    layer.style.width = cabinet.width + 'px'
-    layer.style.height = cabinet.height + 'px'
-    layer.style.clipPath = glassOutline()
+    const { chamber, tray } = cabinet
+    const right = chamber.x + chamber.width
+    const floor = tray.y
+    const mouth = tray.x + tray.width
+    const bottom = floor + tray.height
+    const outline = (roof: number) => [
+      [chamber.x, roof], [right, roof], [right, floor], [mouth, floor],
+      [mouth, bottom], [tray.x, bottom], [tray.x, floor], [chamber.x, floor],
+    ].map(([x, y]) => x + 'px ' + y + 'px').join(', ')
+    layer.style.setProperty('--glass-clip', 'polygon(' + outline(chamber.y) + ')')
+    layer.style.setProperty('--inlet-clip', 'polygon(' + outline(chamber.y - 34) + ')')
     layer.append(this.app.canvas)
     host.append(layer)
-    const resize = () => {
-      layer.style.transform = 'scale(' + host.clientWidth / cabinet.width + ', ' + host.clientHeight / cabinet.height + ')'
-    }
-    new ResizeObserver(resize).observe(host)
-    resize()
   }
 
   render(entities: Iterable<EmojiEntity>, heldId?: number) {
+    const graphics = this.graphics.clear()
     const visible = new Set<number>()
     for (const entity of entities) {
       const { body, radius, reaction } = entity
-      const visual = this.visuals.get(body.id) ?? this.createVisual(entity)
       visible.add(body.id)
+      let visual = this.visuals.get(body.id)
+      const art = portrait(entity.kind, entity.reactionCounts)
+      if (!visual) {
+        const root = document.createElement('div')
+        root.className = 'scene-token'
+        root.dataset.body = String(body.id)
+        root.dataset.kind = entity.kind
+        const image = emojiImage(art.kind, 'scene-portrait')
+        image.dataset.kind = art.kind
+        root.append(image)
+        this.layer.append(root)
+        visual = { root, image }
+        this.visuals.set(body.id, visual)
+      }
+      if (visual.image.dataset.kind !== art.kind) {
+        const image = emojiImage(art.kind, 'scene-portrait')
+        image.dataset.kind = art.kind
+        visual.image.replaceWith(image)
+        visual.image = image
+      }
+      if (art.badge && !visual.badge) {
+        visual.badge = emojiImage(art.badge, 'scene-badge')
+        visual.root.append(visual.badge)
+      }
       const x = body.position.x + cabinet.chamber.x
       const y = body.position.y + cabinet.chamber.y
-      visual.root.position.set(x, y)
       const progress = reaction ? reaction.elapsed / reaction.duration : 1
       const pulse = Math.sin(progress * Math.PI)
-      const resting = !!entity.result?.badge
-      const effect = reaction?.effect
-      const sleepProgress = effect === 'sleep' ? progress : 1
-      const defaultArt = catalog[entity.kind].art
-      const art = progress >= 0.5 ? entity.result?.art ?? defaultArt : defaultArt
-      if (visual.art !== art) {
-        const portrait = emojiImage(art, 'scene-portrait')
-        visual.portrait.replaceWith(portrait)
-        visual.portrait = portrait
-        visual.art = art
-      }
-      const opacity = effect === 'soothe' || effect === 'brighten' ? 1 - pulse * 0.7 : 1
-      const angle = body.angle + (resting ? (1 - (1 - sleepProgress) ** 2) * 0.3 : 0)
-      const bounce = effect === 'grow' ? 0.08 : effect === 'brighten' ? 0.25 : 0
-      const entry = Math.max(0, (entity.spawnRemaining - 640) / 300)
-      const scale = radius / arena.radius * (1 + pulse * bounce + Math.sin(entry * Math.PI) * 0.1)
-      visual.token.style.transform = `translate(${x}px, ${y}px)`
-      visual.portrait.style.transform = `translate(-50%, -50%) rotate(${angle}rad) scale(${scale})`
-      visual.portrait.style.opacity = String(opacity)
-      if (entity.result?.badge) {
-        if (!visual.badge) {
-          visual.badge = emojiImage(entity.result.badge, 'scene-badge')
-          visual.token.append(visual.badge)
-        }
-        visual.badge.style.opacity = String(Math.min(1, sleepProgress * 3))
-        visual.badge.style.transform = `translate(${radius * 0.48}px, ${-radius * 0.85 - Math.sin(sleepProgress * Math.PI) * 8}px)`
-      }
-      if (visual.ring.visible) visual.ring.clear()
-      visual.ring.visible = !!effect || heldId === body.id
-      if (effect === 'dash') {
-        const direction = Math.atan2(body.velocity.y, body.velocity.x)
-        const x = Math.cos(direction)
-        const y = Math.sin(direction)
-        for (const offset of [-7, 7]) {
-          visual.ring.moveTo(-x * radius - y * offset, -y * radius + x * offset)
-            .lineTo(-x * (radius + 28) - y * offset, -y * (radius + 28) + x * offset)
-            .stroke({ color: feedbackColors.dash, width: 3, alpha: 1 - progress })
-        }
-      }
-      if (visual.ring.visible) {
-        visual.ring.circle(0, 0, radius + 6 + (effect ? (1 - (1 - progress) ** 2) * 22 : 0))
-          .stroke({ color: effect ? feedbackColors[effect] : 0xf9d856, width: 3, alpha: effect ? 1 - progress : 1 })
+      const entry = Math.sin(entity.spawnRemaining / 420 * Math.PI)
+      const size = radius / arena.radius * (1 + pulse * 0.11 + entry * 0.09)
+      visual.root.style.transform = 'translate(' + x + 'px,' + y + 'px) rotate(' + (body.angle + art.tilt + pulse * 0.12) + 'rad) scale(' + size + ')'
+      visual.root.toggleAttribute('data-retained', !!entity.retained)
+      if (reaction || heldId === body.id) {
+        graphics.circle(x, y, radius + 4 + (reaction ? progress * 12 : 0))
+          .stroke({ color: reaction ? feedbackColors[reaction.effect] : 0x101012, width: 2.5, alpha: reaction ? 1 - progress : 0.8 })
       }
     }
     for (const [id, visual] of this.visuals) {
       if (visible.has(id)) continue
-      visual.root.destroy({ children: true })
-      visual.token.remove()
+      visual.root.remove()
       this.visuals.delete(id)
     }
     this.app.render()
-  }
-
-  private createVisual(entity: EmojiEntity): Visual {
-    const root = new Container()
-    const ring = root.addChild(new Graphics())
-    ring.visible = false
-    const art = catalog[entity.kind].art
-    const portrait = emojiImage(art, 'scene-portrait')
-    const token = document.createElement('div')
-    token.className = 'scene-token'
-    token.dataset.body = String(entity.body.id)
-    token.append(portrait)
-    this.emojiLayer.append(token)
-    this.app.stage.addChild(root)
-    const visual: Visual = { root, ring, token, portrait, art }
-    this.visuals.set(entity.body.id, visual)
-    return visual
   }
 }

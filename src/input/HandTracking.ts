@@ -66,6 +66,7 @@ export class HandTracking implements InputSource {
     let modelState: 'idle' | 'loading' | 'ready' | 'model-error' | 'inference-error' = 'idle'
     let pose: PoseStatus = 'seeking'
     let status: HandStatus | undefined
+    let blurred = false
     const stopped = () => events.signal.aborted
 
     const report = (next: HandStatus) => {
@@ -143,7 +144,7 @@ export class HandTracking implements InputSource {
         cameraDisconnected()
         return
       }
-      if (!document.hidden) {
+      if (!document.hidden && !blurred) {
         publish(filter.expire(now))
         const freshFrame = !track.muted && !video.paused && video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA &&
           video.videoWidth > 0 && video.videoHeight > 0 && video.currentTime !== lastVideoTime
@@ -233,7 +234,16 @@ export class HandTracking implements InputSource {
       }
     }
 
-    window.addEventListener('pagehide', stop, { signal: events.signal })
+    const options = { signal: events.signal }
+    window.addEventListener('pagehide', stop, options)
+    window.addEventListener('blur', () => {
+      blurred = true
+      publish(filter.reset())
+    }, options)
+    window.addEventListener('focus', () => {
+      blurred = false
+      lastFrameAt = performance.now()
+    }, options)
     // Defer startup so the manager owns the disconnect callback before errors can switch modes.
     queueMicrotask(() => {
       if (!stopped()) void start()
