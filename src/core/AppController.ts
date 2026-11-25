@@ -1,4 +1,4 @@
-import { arena, hatchX, hatchEnd, roofY, shakeDuration, type LidSide, type Settings } from './config'
+import { arena, hatchX, hatchEnd, inletY, roofY, shakeDuration, type LidSide, type Settings } from './config'
 import { PhysicsManager, physicsStep } from '../physics/PhysicsManager'
 import { ReactionEngine } from '../reactions/ReactionEngine'
 import type { EmojiEntity } from '../emoji/EmojiEntity'
@@ -16,6 +16,8 @@ export class AppController {
   private held?: { entity: EmojiEntity; offset: Point; target?: Point; smooth: boolean; previous: Point; velocity: Point }
   private feedSide?: LidSide
   private dragSide?: LidSide
+  private lidReleaseMs = 0
+  private arriving?: { entity: EmojiEntity; side: LidSide; elapsed: number; endX: number; velocity: Point }
   private accumulated = 0
   private shakeStarted?: number
   private nextJolt = 0
@@ -63,26 +65,46 @@ export class AppController {
     const near = position && aim && position.y < roofY + 83 && position.y > roofY - 145 &&
       position.x > -115 && position.x < arena.width + 115 &&
       aim.y < roofY + 65 && aim.y > roofY - 148
-    this.dragSide = near ? this.dragSide ?? (position.x <= arena.width / 2 ? 'left' : 'right') : undefined
-    const side = this.feedSide ?? this.dragSide
+    this.lidReleaseMs = Math.max(0, this.lidReleaseMs - physicsStep)
+    if (near) this.dragSide ??= position.x <= arena.width / 2 ? 'left' : 'right'
+    else if (!this.lidReleaseMs) this.dragSide = undefined
+    const side = this.arriving?.side ?? this.feedSide ?? this.dragSide
     if (side !== this.lidSide) this.physics.setLid(side, Array.from(this.entities, entity => entity.body))
   }
 
   drop(side: LidSide) {
+    if (this.arriving) return false
     if (this.objects.size >= this.settings.maxEmoji) {
       this.notice = '机器已满。'
       return false
     }
-    const inset = 35 + Math.random() * 58
-    const x = side === 'left' ? inset : arena.width - inset
-    const body = this.spawn(x, -44 + Math.random() * 13, true)
     const direction = side === 'left' ? 1 : -1
-    this.physics.launch(body, {
-      x: direction * (0.13 + Math.random() * 0.42),
-      y: 0.13 + Math.random() * 0.19,
-    })
+    const body = this.spawn(side === 'left' ? -75 : arena.width + 75, inletY - 32, true)
+    this.physics.hold(body, true)
+    this.arriving = {
+      entity: this.objects.get(body.id)!, side, elapsed: 0, endX: 57 + Math.random() * 27,
+      velocity: { x: direction * (0.17 + Math.random() * 0.28), y: 0.24 + Math.random() * 0.18 },
+    }
     this.notice = ''
     return true
+  }
+
+  private advanceDrop() {
+    const entry = this.arriving
+    if (!entry) return
+    entry.elapsed += physicsStep
+    const t = Math.min(1, entry.elapsed / 370)
+    const u = 1 - t
+    const x = -75 * u ** 3 - 123 * u ** 2 * t + 102 * u * t ** 2 + entry.endX * t ** 3
+    const y = (inletY - 32) * u ** 3 + (inletY - 28) * 3 * u ** 2 * t +
+      (roofY - 56) * 3 * u * t ** 2 + (roofY + 24) * t ** 3
+    this.physics.guideDrop(entry.entity.body, { x: entry.side === 'left' ? x : arena.width - x, y })
+    if (t === 1) {
+      this.physics.hold(entry.entity.body, false)
+      this.physics.tune(entry.entity.body, this.settings)
+      this.physics.launch(entry.entity.body, entry.velocity)
+      this.arriving = undefined
+    }
   }
 
   private spawn(x: number, y: number, active: boolean) {
@@ -98,13 +120,15 @@ export class AppController {
     this.objects.delete(entity.body.id)
   }
 
-  grab(point: Point) {
+  grab(point: Point, outsideOnly = false) {
     if (this.held) return
     let closest: EmojiEntity | undefined
     let minDistance = Infinity
     for (const entity of this.entities) {
-      if (entity.retained) continue
-      const distance = Math.hypot(entity.body.position.x - point.x, entity.body.position.y - point.y)
+      const { x, y } = entity.body.position
+      if (entity.retained || entity === this.arriving?.entity ||
+        (outsideOnly && x >= 0 && x <= arena.width && y >= roofY)) continue
+      const distance = Math.hypot(x - point.x, y - point.y)
       if (distance <= entity.radius + this.settings.grabRange && distance <= minDistance) {
         closest = entity
         minDistance = distance
@@ -135,7 +159,10 @@ export class AppController {
     const { entity: { body }, velocity } = this.held
     this.physics.hold(body, false)
     this.physics.tune(body, this.settings)
-    if (throwHeld) this.physics.launch(body, velocity)
+    if (throwHeld) {
+      this.physics.launch(body, velocity)
+      if (this.dragSide) this.lidReleaseMs = 460
+    }
     this.held = undefined
   }
 
@@ -203,12 +230,13 @@ export class AppController {
     while (this.accumulated >= physicsStep) {
       this.accumulated -= physicsStep
       this.updateLid()
+      this.advanceDrop()
       this.stepDrag()
       this.reactions.advance(this.entities, physicsStep, this.settings.reactionCooldown)
       for (const [bodyA, bodyB] of this.physics.step(this.settings.gravity, phase)) {
         const first = this.objects.get(bodyA.id)
         const second = this.objects.get(bodyB.id)
-        if (!first || !second) continue
+        if (!first || !second || first === this.arriving?.entity || second === this.arriving?.entity) continue
         const reaction = this.reactions.match(first, second, this.settings.reactionCooldown)
         if (!reaction) continue
         const { actor, ingredient, rule } = reaction

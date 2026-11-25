@@ -1,5 +1,5 @@
 import { Application, Graphics } from 'pixi.js'
-import { arena, cabinet, room, roofY } from '../core/config'
+import { arena, cabinet, groundY, room, roofY } from '../core/config'
 import { emojiImage } from '../emoji/emojiImage'
 import type { EmojiEntity } from '../emoji/EmojiEntity'
 import { portrait } from '../capsule/PosterLayout'
@@ -18,7 +18,7 @@ export class SceneRenderer {
     const canvasLeft = room.left + cabinet.chamber.x
     const width = Math.ceil(room.right - room.left)
     await this.app.init({
-      width, height: cabinet.height, resolution: Math.min(devicePixelRatio, 2),
+      width, height: cabinet.height + 6, resolution: Math.min(devicePixelRatio, 2),
       backgroundAlpha: 0, antialias: true, autoStart: false,
     })
     this.app.stage.addChild(this.graphics)
@@ -27,6 +27,7 @@ export class SceneRenderer {
     layer.setAttribute('aria-hidden', 'true')
     this.app.canvas.style.left = canvasLeft + 'px'
     this.app.canvas.style.width = width + 'px'
+    this.app.canvas.style.height = cabinet.height + 6 + 'px'
     this.graphics.position.x = -canvasLeft
     layer.append(this.app.canvas)
     host.append(layer)
@@ -72,6 +73,13 @@ export class SceneRenderer {
       visual.root.toggleAttribute('data-retained', !!entity.retained)
       visual.root.toggleAttribute('data-outside', !entity.retained &&
         (body.position.x < 0 || body.position.x > arena.width || body.position.y < roofY))
+      const floorGap = groundY - body.position.y - radius
+      if (!entity.retained && heldId !== body.id && floorGap < 38 &&
+        (body.position.x < 0 || body.position.x > arena.width)) {
+        const contact = 1 - Math.max(0, floorGap) / 38
+        graphics.ellipse(x, groundY + cabinet.chamber.y + 1, radius * (0.57 + contact * 0.22), 2.6)
+          .fill({ color: 0x35536d, alpha: 0.2 * contact })
+      }
       if (reaction || heldId === body.id) {
         graphics.circle(x, y, radius + 4 + (reaction ? progress * 12 : 0))
           .stroke({ color: reaction ? feedbackColors[reaction.effect] : 0x101012, width: 2.5, alpha: reaction ? 1 - progress : 0.8 })

@@ -7,14 +7,15 @@ export const cabinet = {
 export const posterWall = { x: 844, y: 54, width: 760, height: 728 } as const
 export type LidSide = 'left' | 'right'
 export const arena = { width: cabinet.chamber.width, height: cabinet.chamber.height, radius: 22 }
-export const machineCamera = { zoom: 1.74, focusY: 370 }
+export const machineCamera = { zoom: 1.52, focusY: 432 }
 export const lid = { seam: 115, angle: 12 * Math.PI / 180 }
 export const room = {
-  floor: cabinet.y + 674,
-  left: arena.width / 2 - exhibit.width / (2 * machineCamera.zoom) + 3,
-  right: arena.width / 2 + exhibit.width / (2 * machineCamera.zoom) - 3,
+  floor: cabinet.y + cabinet.height,
+  left: -cabinet.x - cabinet.chamber.x + 3,
+  right: exhibit.width - cabinet.x - cabinet.chamber.x - 3,
 }
 export const roofY = lid.seam - cabinet.chamber.y
+export const inletY = machineCamera.focusY - exhibit.height / (2 * machineCamera.zoom) - cabinet.chamber.y
 export const groundY = room.floor - cabinet.y - cabinet.chamber.y
 export const hatchX = cabinet.tray.x - cabinet.chamber.x
 export const hatchEnd = hatchX + cabinet.tray.width

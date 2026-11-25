@@ -56,8 +56,10 @@ export class PhysicsManager {
       Bodies.rectangle((hatchX + hatchEnd) / 2, trayBottom + thickness / 2, hatchEnd - hatchX + thickness, thickness, wall),
       this.hatch,
       gate(returnCategory),
-      segment({ x: -2, y: height - 4 }, { x: -40, y: groundY + 12 }),
-      segment({ x: width + 2, y: height - 4 }, { x: width + 40, y: groundY + 12 }),
+      segment({ x: -2, y: height - 4 }, { x: -50, y: groundY - 52 }),
+      segment({ x: width + 2, y: height - 4 }, { x: width + 50, y: groundY - 52 }),
+      segment({ x: -50, y: groundY - 53 }, { x: -50, y: groundY }),
+      segment({ x: width + 50, y: groundY - 53 }, { x: width + 50, y: groundY }),
       Bodies.rectangle((room.left + room.right) / 2, groundY + 20, room.right - room.left + 60, 40, { ...wall, friction: 0.16 }),
       Bodies.rectangle(room.left - 10, (groundY + roomTop) / 2, 20, groundY - roomTop + 40, wall),
       Bodies.rectangle(room.right + 10, (groundY + roomTop) / 2, 20, groundY - roomTop + 40, wall),
@@ -133,6 +135,10 @@ export class PhysicsManager {
     }
   }
 
+  guideDrop(body: Matter.Body, point: Point) {
+    Body.setPosition(body, point)
+  }
+
   private tryMove(body: Matter.Body, start: Point, x: number, y: number) {
     if (Math.hypot(x, y) < 0.05) return false
     Body.setPosition(body, { x: start.x + x, y: start.y + y })
@@ -194,10 +200,9 @@ export class PhysicsManager {
   shake(body: Matter.Body, phase: number, retained: boolean) {
     const swing = phase + body.id * 1.4
     const direction = Math.sign((hatchX + hatchEnd) / 2 - body.position.x)
-    const sideways = Math.sin(swing) * 9 + (retained ? 0 : direction * 7)
-    const vertical = retained ? Math.cos(swing) * 4 : Math.cos(swing) * 8 - 4
-    Body.setVelocity(body, { x: body.velocity.x * 0.55 + sideways, y: body.velocity.y * 0.65 + vertical })
-    Body.setAngularVelocity(body, sideways * 0.014)
+    const sideways = Math.sin(swing) * (retained ? 3 : 6) + (retained ? 0 : direction * 6)
+    Body.setVelocity(body, { x: body.velocity.x * 0.55 + sideways, y: Math.max(-2, body.velocity.y) })
+    Body.setAngularVelocity(body, sideways * 0.011)
   }
 
   contain(body: Matter.Body, radius: number, retained: boolean) {
@@ -221,8 +226,8 @@ export class PhysicsManager {
   }
 
   step(gravity: number, shakePhase?: number) {
-    this.engine.gravity.x = shakePhase === undefined ? 0 : Math.sin(shakePhase) * 0.85
-    this.engine.gravity.y = shakePhase === undefined ? gravity : Math.max(0.85, gravity) + Math.cos(shakePhase) * 0.35
+    this.engine.gravity.x = shakePhase === undefined ? 0 : Math.sin(shakePhase) * 0.28
+    this.engine.gravity.y = shakePhase === undefined ? gravity : Math.max(0.55, gravity)
     this.collisions.length = 0
     Engine.update(this.engine, physicsStep)
     return this.collisions

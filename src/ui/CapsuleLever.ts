@@ -24,7 +24,12 @@ export class CapsuleLever {
     if (!this.pull) return
     const progress = Math.max(0, Math.min(1, (y - this.pull.startY) / this.pull.travel))
     this.pull.progress = progress
-    this.track.style.setProperty('--pull', String(progress))
+    const limit = Math.PI * 0.37
+    const angle = progress * limit
+    const depth = (1 - Math.cos(angle)) / (1 - Math.cos(limit))
+    this.track.style.setProperty('--lever-y', 53 * Math.sin(angle) / Math.sin(limit) + 'px')
+    this.track.style.setProperty('--lever-depth', String(1 + 0.12 * depth))
+    this.track.style.setProperty('--lever-shaft', 69 - 36 * depth + 'px')
     this.button.toggleAttribute('data-armed', progress >= pullThreshold)
   }
 
@@ -36,7 +41,7 @@ export class CapsuleLever {
 
   cancel() {
     this.pull = undefined
-    this.track.style.removeProperty('--pull')
+    for (const property of ['--lever-y', '--lever-depth', '--lever-shaft']) this.track.style.removeProperty(property)
     delete this.button.dataset.pulling
     delete this.button.dataset.armed
   }

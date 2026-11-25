@@ -53,17 +53,23 @@ export function moveSticker(sticker: Sticker, x: number, y: number, version: Pos
   sticker.y = Math.round(Math.max(area.top + padding, Math.min(area.bottom - padding, y)))
 }
 
-function writeCaption(items: readonly CapsuleResult[]) {
+function writeCaption(items: readonly CapsuleResult[], variation: number) {
   const kinds = Array.from(new Set(items.map(item => item.kind)))
-  if (items.some(item => item.state?.chase)) return '鱼跑得比猫快'
-  if (items.some(item => item.state?.dash)) return '龟速今天请假'
-  if (items.some(item => item.state?.sleep)) return '小鸡借月亮充电'
-  if (items.some(item => item.state?.grow)) return '虫子不够塞牙'
-  if (items.some(item => item.state?.brighten)) return '眼泪已晒干'
-  if (items.some(item => item.state?.soothe)) return '脾气被爱心没收'
-  if (kinds.length === 1) return catalog[kinds[0]] + (items.length === 1 ? '单飞中' : '组团包场')
-  if (kinds.includes('sun') && kinds.includes('moon')) return '月亮误入晴天'
-  return catalog[kinds[0]] + '约' + catalog[kinds[1]] + '串门'
+  const choose = (lines: string[]) => lines[variation % lines.length]
+  if (items.some(item => item.state?.chase)) return choose(['鱼跑得比猫快', '午饭跑丢了', '猫说下次再追'])
+  if (items.some(item => item.state?.dash)) return choose(['龟速今天请假', '乌龟偷了道闪电', '壳里装了马达'])
+  if (items.some(item => item.state?.sleep)) return choose(['小鸡借月亮充电', '鸡先睡为敬', '月亮值夜班'])
+  if (items.some(item => item.state?.grow)) return choose(['虫子不够塞牙', '小鸡偷偷加餐', '一口吃大一圈'])
+  if (items.some(item => item.state?.brighten)) return choose(['眼泪已晒干', '太阳发来晴天', '哭完刚好放晴'])
+  if (items.some(item => item.state?.soothe)) return choose(['脾气被爱心没收', '怒气临时休假', '红脸偷偷和好'])
+  if (kinds.length === 1) {
+    return catalog[kinds[0]] + (items.length === 1
+      ? choose(['单飞中', '今天独角戏', '抢到头等座']) : choose(['组团包场', '排队占领画面', '集体逃课']))
+  }
+  if (kinds.includes('sun') && kinds.includes('moon')) return choose(['月亮误入晴天', '日月换个班', '太阳约月亮宵夜'])
+  const first = catalog[kinds[0]]
+  const second = catalog[kinds[1]]
+  return choose([first + '约' + second + '串门', first + '和' + second + '同桌', first + '拉' + second + '出逃'])
 }
 export function portrait(kind: EmojiKind, state?: ReactionState): { kind: EmojiArtwork; badge?: EmojiKind; tilt: number } {
   if (state?.sleep) return { kind, badge: 'moon', tilt: 0.3 }
@@ -73,7 +79,7 @@ export function portrait(kind: EmojiKind, state?: ReactionState): { kind: EmojiA
   return { kind, tilt: 0 }
 }
 
-export function createPoster(items: readonly CapsuleResult[]): Poster {
+export function createPoster(items: readonly CapsuleResult[], variation = 0, previous?: Poster): Poster {
   const ordered = [...items]
   for (let index = ordered.length - 1; index > 0; index--) {
     const other = Math.floor(Math.random() * (index + 1))
@@ -99,10 +105,10 @@ export function createPoster(items: readonly CapsuleResult[]): Poster {
   const mirrored = Math.random() < 0.5
   return {
     version: 3,
-    id: crypto.randomUUID(),
-    createdAt: new Date().toISOString(),
-    palette: 5,
-    caption: writeCaption(items),
+    id: previous?.id ?? crypto.randomUUID(),
+    createdAt: previous?.createdAt ?? new Date().toISOString(),
+    palette: previous?.palette ?? 5,
+    caption: writeCaption(items, variation),
     stickers: ordered.map((item, index) => {
       const row = Math.floor(index / columns)
       const rowLength = Math.min(columns, ordered.length - row * columns)
@@ -113,16 +119,21 @@ export function createPoster(items: readonly CapsuleResult[]): Poster {
         378 + (row - (rows - 1) / 2) * height + (Math.random() - 0.5) * slot * 0.44,
         Math.round(slot * (0.59 + Math.random() * 0.31)),
       ]
+      const layoutVariant = variation % 4
+      const factor = [1, 0.80, 1.10, 0.91][layoutVariant]
+      const angle = Math.round((Math.random() - 0.5) * 82) + [0, 29, -26, 15][layoutVariant]
       const sticker: Sticker = {
         kind: item.kind,
         state: item.state,
         source: item.source,
         x: 0,
         y: 0,
-        size: Math.min(296, size + Math.min(12, item.state?.grow ?? 0)),
-        tilt: Math.round((Math.random() - 0.5) * 82),
+        size: Math.max(12, Math.min(296, Math.round(size * factor) + Math.min(12, item.state?.grow ?? 0))),
+        tilt: ((angle + 123) % 82) - 41,
       }
-      moveSticker(sticker, mirrored ? 600 - x : x, y)
+      const layoutX = mirrored !== (layoutVariant % 2 === 1) ? 600 - x : x
+      moveSticker(sticker, layoutX + [0, -29, 22, 41][layoutVariant] * (index % 2 ? -1 : 1),
+        y + [0, 48, -43, 29][layoutVariant] * (index % 2 ? -1 : 1))
       return sticker
     }),
   }

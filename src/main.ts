@@ -16,7 +16,8 @@ import './ui/styles.css'
 async function start() {
   const app = new AppController({ ...initialSettings })
   const ui = new UIManager(app.settings, () => app.tune(), () => app.shake(performance.now()),
-    take, cancelAction, () => ui.showArchiveMode(wall.store.mode), () => void generatePoster(), closePoster, () => void pinPoster())
+    () => void take(), cancelAction, () => ui.showArchiveMode(wall.store.mode), () => void generatePoster(),
+    closePoster, () => void pinPoster(), rerollPoster)
   const scene = new SceneRenderer()
   const wall = new PosterWall(ui.gallery, async poster => {
     if (ui.camera.locked || ui.camera.view !== 'wall' || ui.modalOpen) return
@@ -32,26 +33,44 @@ async function start() {
   let nextDrop = 0
   let lidSide: LidSide | undefined
   let exporting = false
-  let draft: { poster: Poster; items: CapsuleResult[]; png?: Blob } | undefined
+  let printing = false
+  let draft: { poster: Poster; items: CapsuleResult[]; variation: number; png?: Blob } | undefined
 
   function refresh() {
-    ui.update(app.shaking, app.retainedCount, exporting)
+    ui.update(app.shaking, app.retainedCount, exporting || printing)
   }
 
-  function take() {
-    if (exporting || ui.camera.locked || ui.modalOpen || ui.camera.view !== 'machine') return
-    if (!draft) {
-      const items = app.capture()
-      if (!items.length) return
-      draft = { items, poster: createPoster(items) }
-    }
+  async function take() {
+    if (printing || exporting || ui.camera.locked || ui.modalOpen || ui.camera.view !== 'machine') return
+    const items = app.capture()
+    if (!items.length) return
+    const poster = createPoster(items)
+    draft = { items, poster, variation: 0 }
+    printing = true
     cancelAction()
-    if (draft.png) ui.showCard(draft.png, true)
-    else ui.showEditor(draft.poster)
+    refresh()
+    try {
+      await ui.print(poster)
+    } catch (error) {
+      console.error(error)
+    } finally {
+      printing = false
+      ui.showEditor(poster)
+      refresh()
+    }
+  }
+
+  function rerollPoster() {
+    if (!draft || draft.png || exporting || printing) return
+    draft.variation++
+    draft.poster = createPoster(draft.items, draft.variation, draft.poster)
+    ui.showEditor(draft.poster)
   }
 
   function closePoster() {
-    if (!draft?.png) draft = undefined
+    if (draft?.png) app.take(draft.items)
+    draft = undefined
+    refresh()
     if (active === 'sticker') active = undefined
   }
 
@@ -126,6 +145,7 @@ async function start() {
       if (cameraMode) ui.cancelCursor(action.position)
       return
     }
+    if (printing) return
     const handAction = action.type === 'grab' ? 'activate' : action.pressed ? undefined : 'aim'
     const hit = ui.locate(action.position, cameraMode ? handAction : undefined)
     ui.showCursor(cameraMode ? action.position : undefined, action.pressed, cameraMode ? hit.control : undefined)
@@ -143,7 +163,7 @@ async function start() {
       } else if (cameraMode && hit.control) {
         hit.control.click()
       } else if (hit.inside) {
-        app.grab(hit.point)
+        app.grab(hit.point, ui.camera.view === 'overview')
         active = 'emoji'
       }
     } else if (action.type === 'release') {

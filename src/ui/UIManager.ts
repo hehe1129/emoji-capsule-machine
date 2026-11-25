@@ -6,6 +6,7 @@ import type { CameraDevice } from '../input/CameraCapture'
 import { CapsuleLever } from './CapsuleLever'
 import { ExhibitCamera } from './ExhibitCamera'
 import { PosterEditor } from './PosterEditor'
+import { printPoster } from './PosterPrinter'
 import type { Poster } from '../capsule/PosterLayout'
 import { place } from './placement'
 
@@ -48,11 +49,13 @@ export class UIManager {
   private wallOpen = false
   private toastTimer?: number
   readonly take = element<HTMLButtonElement>('take')
+  private readonly printSlot = element('print-slot')
   private readonly gate = element('retention-gate')
   private readonly souvenir = element<HTMLDialogElement>('souvenir')
   private readonly posterView = element('poster-view')
   readonly editor = new PosterEditor(this.posterView, element('poster-colors'))
   private readonly confirm = element<HTMLButtonElement>('confirm-card')
+  private readonly reroll = element<HTMLButtonElement>('reroll-card')
   private readonly pinCard = element<HTMLButtonElement>('pin-card')
   private readonly closeCard = element<HTMLButtonElement>('close-card')
   private readonly posterMessage = element('poster-message')
@@ -78,6 +81,7 @@ export class UIManager {
     onSavePoster: () => void,
     onClosePoster: () => void,
     onPinPoster: () => void,
+    onReroll: () => void,
   ) {
     place(this.playfield, cabinet.chamber)
     place(element('collector'), cabinet.tray)
@@ -95,6 +99,7 @@ export class UIManager {
     this.take.addEventListener('click', onTake)
     this.closeCard.addEventListener('click', () => this.souvenir.close())
     this.confirm.addEventListener('click', onSavePoster)
+    this.reroll.addEventListener('click', onReroll)
     this.pinCard.addEventListener('click', onPinPoster)
     this.souvenir.addEventListener('cancel', event => {
       if (this.closeCard.disabled) event.preventDefault()
@@ -199,13 +204,26 @@ export class UIManager {
     this.download.hidden = true
     this.pinCard.hidden = true
     this.confirm.hidden = false
+    this.reroll.hidden = false
     this.setPosterStatus(false)
     this.open(this.souvenir)
   }
 
+  async print(poster: Poster) {
+    const operator = this.surface.querySelector<HTMLElement>('.operator-controls')!
+    this.back.disabled = true
+    operator.inert = true
+    try {
+      await printPoster(this.printSlot, poster)
+    } finally {
+      this.back.disabled = false
+      operator.inert = false
+    }
+  }
+
   setPosterStatus(saving: boolean, message = '', posted = false) {
     this.editor.lock(saving)
-    this.confirm.disabled = this.closeCard.disabled = saving
+    this.confirm.disabled = this.reroll.disabled = this.closeCard.disabled = saving
     this.confirm.textContent = saving ? '正在生成…' : '生成海报'
     this.pinCard.disabled = saving || posted
     this.pinCard.textContent = posted ? '已粘贴' : saving ? '粘贴中…' : '粘贴海报'
@@ -217,6 +235,7 @@ export class UIManager {
     this.editor.close()
     this.setPosterStatus(false)
     this.confirm.hidden = true
+    this.reroll.hidden = true
     this.pinCard.hidden = !canPin
     if (this.cardUrl) URL.revokeObjectURL(this.cardUrl)
     this.cardUrl = URL.createObjectURL(blob)
@@ -337,7 +356,7 @@ export class UIManager {
     const hit = document.elementFromPoint(x, y)
     const target = hit?.closest<HTMLElement>('#lid, #draw, [data-hand]') ?? undefined
     let control = target?.matches(':disabled') ? undefined : target
-    const inside = !this.modalOpen && !this.camera.locked && this.camera.view === 'machine' &&
+    const inside = !this.modalOpen && !this.camera.locked && this.camera.view !== 'wall' &&
       !!hit && this.surface.contains(hit) && !hit.closest('.operator-controls, #back')
     const insideGallery = !this.camera.locked && this.camera.view === 'wall' && !!hit && this.gallery.contains(hit)
     const now = performance.now()
