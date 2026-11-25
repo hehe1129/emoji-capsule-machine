@@ -64,6 +64,7 @@ export class AppController {
   }
 
   private remove(entity: EmojiEntity) {
+    if (this.heldId === entity.body.id) this.release()
     this.physics.remove(entity.body)
     this.objects.delete(entity.body.id)
   }
@@ -139,7 +140,6 @@ export class AppController {
     for (const { entityId } of items) {
       const entity = this.objects.get(entityId)
       if (!entity) continue
-      if (this.heldId === entityId) this.release()
       this.remove(entity)
     }
   }
@@ -210,7 +210,6 @@ export class AppController {
         const state = this.physics.contain(body, radius, !!entity.retained)
         if (state === 'recovered') this.notice = '一个 Emoji 越过边界，已移回容器。'
         if (state === 'invalid') {
-          if (this.heldId === body.id) this.held = undefined
           this.remove(entity)
           this.notice = '一个 Emoji 的运动数据异常，已移出容器。'
         }

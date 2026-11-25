@@ -50,7 +50,9 @@ export class PhysicsManager {
     ])
     Events.on(this.engine, 'collisionStart', ({ pairs }) => {
       for (const { bodyA, bodyB } of pairs) {
-        if (!bodyA.isStatic && !bodyB.isStatic) this.collisions.push([bodyA, bodyB])
+        // Held Emoji are static while the pointer drives them, but can still collide.
+        // The controller ignores cabinet bodies since those have no Emoji entity.
+        if (!bodyA.isStatic || !bodyB.isStatic) this.collisions.push([bodyA, bodyB])
       }
     })
   }
@@ -93,7 +95,7 @@ export class PhysicsManager {
     Body.setVelocity(body, { x: 0, y: 0 })
     Body.setAngularVelocity(body, 0)
     Body.setStatic(body, held)
-    body.collisionFilter.mask = held ? 0 : normalMask
+    body.collisionFilter.mask = normalMask
   }
 
   grow(body: Matter.Body, factor: number) {
