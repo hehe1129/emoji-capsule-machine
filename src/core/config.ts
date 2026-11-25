@@ -4,9 +4,18 @@ export const cabinet = {
   chamber: { x: 60, y: 152, width: 440, height: 370 },
   tray: { x: 211, y: 522, width: 138, height: 149 },
 } as const
-export const posterWall = { x: 844, y: 73, width: 760, height: 752 } as const
+export const posterWall = { x: 844, y: 54, width: 760, height: 728 } as const
 export type LidSide = 'left' | 'right'
 export const arena = { width: cabinet.chamber.width, height: cabinet.chamber.height, radius: 22 }
+export const machineCamera = { zoom: 1.74, focusY: 370 }
+export const lid = { seam: 115, angle: 12 * Math.PI / 180 }
+export const room = {
+  floor: cabinet.y + 674,
+  left: arena.width / 2 - exhibit.width / (2 * machineCamera.zoom) + 3,
+  right: arena.width / 2 + exhibit.width / (2 * machineCamera.zoom) - 3,
+}
+export const roofY = lid.seam - cabinet.chamber.y
+export const groundY = room.floor - cabinet.y - cabinet.chamber.y
 export const hatchX = cabinet.tray.x - cabinet.chamber.x
 export const hatchEnd = hatchX + cabinet.tray.width
 export const dropInterval = 700

@@ -16,15 +16,14 @@
       <section class="cabinet" id="cabinet" aria-label="红色扭蛋机">
         <div class="cabinet-art" id="cabinet-art">
           <svg class="cabinet-shell" viewBox="0 0 560 780" aria-hidden="true">
-            <path fill="#e4edf0" d="M58 140H502V536H58Z"/>
-            <path fill="none" stroke="#111113" stroke-width="12" d="M60 153V533M500 153V533"/>
+            <path fill="#d2e9f2" d="M60 115H500V153H60Z"/>
+            <path fill="none" stroke="#111113" stroke-width="12" d="M60 115V533M500 115V533"/>
             <path fill="#ff2f27" stroke="#111113" stroke-width="13" stroke-linejoin="round"
               d="M60 513H500L550 726V761Q550 774 537 774H23Q10 774 10 761V726Z"/>
             <path fill="none" stroke="#111113" stroke-width="7" d="M10 731H550"/>
             <path fill="#e62b25" d="M17 735H543V760Q543 767 537 767H23Q17 767 17 760Z"/>
           </svg>
           <div id="playfield" class="playfield" aria-label="玻璃主仓"></div>
-          <div class="lid-gap" aria-hidden="true"></div>
           <div id="collector" class="collector" role="group" aria-label="滞留区"></div>
           <div class="chamber-floor" aria-hidden="true"></div>
           <div id="retention-gate" class="retention-gate" aria-hidden="true"></div>
@@ -33,8 +32,7 @@
             <button id="lid" class="lid-hit" type="button" aria-label="按住顶盖投放" title="按住顶盖投放" aria-pressed="false">
               <svg viewBox="0 0 560 165" aria-hidden="true">
                 <path fill="#ff3027" stroke="#111113" stroke-width="12" stroke-linejoin="round"
-                  d="M60 153V77Q60 69 69 66L280 7L491 66Q500 69 500 77V153Z"/>
-                <path fill="none" stroke="#111113" stroke-width="6" d="M60 115H500"/>
+                  d="M60 115V77Q60 69 69 66L280 7L491 66Q500 69 500 77V115Z"/>
               </svg>
             </button>
             <button id="draw" class="lever" type="button" aria-keyshortcuts="ArrowDown" aria-label="下拉摇杆" title="下拉摇杆">
@@ -90,6 +88,7 @@
     <div class="dialog-controls">
       <button id="close-card" type="button" data-native data-hand aria-label="关闭海报"><span aria-hidden="true">×</span></button>
       <button id="confirm-card" type="button" data-native data-hand hidden>生成海报</button>
+      <button id="pin-card" type="button" data-native data-hand hidden>粘贴海报</button>
       <a id="save-card" data-native data-hand download="扭蛋黄-纪念海报.png" hidden>下载 PNG</a>
     </div>
   </dialog>
@@ -98,7 +97,8 @@
       <button id="close-help" type="button" data-native data-hand aria-label="关闭说明"><span aria-hidden="true">×</span></button>
       <h1>扭蛋黄</h1>
       <p>用鼠标或摄像头捏合选中扭蛋机和海报墙。</p>
-      <p>按住红色顶盖投放 Emoji，抓起它们碰一碰。向下拉黄色摇杆抽取，再点「带走!」生成海报。</p>
+      <p>按住顶盖投放 Emoji。把 Emoji 拖近顶盖，可以从开口拿出或放回。</p>
+      <p>下拉摇杆抽取，点「带走!」生成海报，再下载或贴到墙上。</p>
       <p>把光标移到海报墙上缘或下缘浏览。点选海报可以放大。</p>
       <p id="archive-mode" role="status"></p>
     </div>

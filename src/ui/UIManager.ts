@@ -53,6 +53,7 @@ export class UIManager {
   private readonly posterView = element('poster-view')
   readonly editor = new PosterEditor(this.posterView, element('poster-colors'))
   private readonly confirm = element<HTMLButtonElement>('confirm-card')
+  private readonly pinCard = element<HTMLButtonElement>('pin-card')
   private readonly closeCard = element<HTMLButtonElement>('close-card')
   private readonly posterMessage = element('poster-message')
   private readonly download = element<HTMLAnchorElement>('save-card')
@@ -76,6 +77,7 @@ export class UIManager {
     onHelp: () => void,
     onSavePoster: () => void,
     onClosePoster: () => void,
+    onPinPoster: () => void,
   ) {
     place(this.playfield, cabinet.chamber)
     place(element('collector'), cabinet.tray)
@@ -93,6 +95,7 @@ export class UIManager {
     this.take.addEventListener('click', onTake)
     this.closeCard.addEventListener('click', () => this.souvenir.close())
     this.confirm.addEventListener('click', onSavePoster)
+    this.pinCard.addEventListener('click', onPinPoster)
     this.souvenir.addEventListener('cancel', event => {
       if (this.closeCard.disabled) event.preventDefault()
     })
@@ -191,26 +194,30 @@ export class UIManager {
     this.cancelCursor()
   }
 
-  showEditor(poster: Poster, retry: boolean) {
+  showEditor(poster: Poster) {
     this.editor.open(poster)
     this.download.hidden = true
+    this.pinCard.hidden = true
     this.confirm.hidden = false
-    this.setPosterStatus(false, retry, retry ? '可重试保存这张海报。' : '')
+    this.setPosterStatus(false)
     this.open(this.souvenir)
   }
 
-  setPosterStatus(saving: boolean, locked: boolean, message = '') {
-    this.editor.lock(locked)
+  setPosterStatus(saving: boolean, message = '', posted = false) {
+    this.editor.lock(saving)
     this.confirm.disabled = this.closeCard.disabled = saving
-    this.confirm.textContent = saving ? '正在归档…' : locked ? '重试保存' : '生成海报'
+    this.confirm.textContent = saving ? '正在生成…' : '生成海报'
+    this.pinCard.disabled = saving || posted
+    this.pinCard.textContent = posted ? '已粘贴' : saving ? '粘贴中…' : '粘贴海报'
     this.posterMessage.textContent = message
     this.posterMessage.hidden = !message
   }
 
-  showCard(blob: Blob) {
+  showCard(blob: Blob, canPin = false) {
     this.editor.close()
-    this.setPosterStatus(false, false)
+    this.setPosterStatus(false)
     this.confirm.hidden = true
+    this.pinCard.hidden = !canPin
     if (this.cardUrl) URL.revokeObjectURL(this.cardUrl)
     this.cardUrl = URL.createObjectURL(blob)
     this.download.hidden = false
@@ -224,6 +231,7 @@ export class UIManager {
   }
 
   setLid(side?: LidSide) {
+    if (this.cabinetArt.dataset.lidSide === side) return
     this.lid.setAttribute('aria-pressed', String(!!side))
     if (side) this.cabinetArt.dataset.lidSide = side
     else delete this.cabinetArt.dataset.lidSide
@@ -329,7 +337,8 @@ export class UIManager {
     const hit = document.elementFromPoint(x, y)
     const target = hit?.closest<HTMLElement>('#lid, #draw, [data-hand]') ?? undefined
     let control = target?.matches(':disabled') ? undefined : target
-    const inside = !this.camera.locked && this.camera.view === 'machine' && !!hit && this.playfield.contains(hit)
+    const inside = !this.modalOpen && !this.camera.locked && this.camera.view === 'machine' &&
+      !!hit && this.surface.contains(hit) && !hit.closest('.operator-controls, #back')
     const insideGallery = !this.camera.locked && this.camera.view === 'wall' && !!hit && this.gallery.contains(hit)
     const now = performance.now()
     if (handAction === 'aim' && control) this.lastButtonAim = { control, time: now }

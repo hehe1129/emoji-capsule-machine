@@ -45,7 +45,7 @@ export async function createSouvenir(poster: Poster) {
     context.fillText('扭蛋黄纪念海报', 46, 747)
     context.font = '700 19px system-ui'
     context.fillText(edition + '  /  ' + poster.createdAt.slice(0, 10), 46, 782)
-  } else {
+  } else if (poster.version === 2) {
     context.font = '900 78px "Microsoft YaHei", "PingFang SC", sans-serif'
     context.fillText(title, 42, 102)
     context.font = '600 17px system-ui'
@@ -56,6 +56,19 @@ export async function createSouvenir(poster: Poster) {
     context.fillRect(42, 710, 516, 3)
     context.font = '600 26px "Microsoft YaHei", "PingFang SC", sans-serif'
     context.fillText(poster.caption ?? '', 42, 759, 516)
+  } else {
+    context.font = '900 64px "Microsoft YaHei", "PingFang SC", sans-serif'
+    context.fillText(title, 27, 81)
+    context.textAlign = 'right'
+    context.font = '600 28px "Microsoft YaHei", "PingFang SC", sans-serif'
+    context.fillText(poster.caption ?? '', 564, 690, 514)
+    context.fillStyle = '#fffefb'
+    context.fillRect(0, 735, width, height - 735)
+    context.fillStyle = ink
+    context.font = '500 17px system-ui'
+    context.fillText(edition, 566, 791)
+    context.textAlign = 'left'
+    context.fillText(poster.createdAt.slice(0, 10).replaceAll('-', '.'), 30, 791)
   }
   const artwork = await Promise.all(poster.stickers.map(async sticker => {
     const art = portrait(sticker.kind, sticker.state)

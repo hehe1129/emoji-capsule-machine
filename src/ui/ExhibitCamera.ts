@@ -1,4 +1,4 @@
-import { cabinet, exhibit, posterWall } from '../core/config'
+import { cabinet, exhibit, machineCamera, posterWall, room } from '../core/config'
 import { place } from './placement'
 
 export type View = 'overview' | 'machine' | 'wall'
@@ -19,6 +19,7 @@ export class ExhibitCamera {
     update()
     place(document.getElementById('cabinet')!, cabinet)
     place(document.getElementById('poster-wall')!, posterWall)
+    this.world.style.setProperty('--floor-y', room.floor + 'px')
   }
 
   async go(view: View) {
@@ -29,9 +30,9 @@ export class ExhibitCamera {
     this.world.dataset.transition = ''
     this.onChange()
     const bounds = view === 'machine' ? cabinet : posterWall
-    const zoom = view === 'overview' ? 1 : view === 'machine' ? 1.66 : 1.33
+    const zoom = view === 'overview' ? 1 : view === 'machine' ? machineCamera.zoom : 1.33
     const x = view === 'overview' ? 0 : exhibit.width / 2 - (bounds.x + bounds.width / 2) * zoom
-    const focusY = view === 'machine' ? cabinet.y + 377 : bounds.y + bounds.height / 2
+    const focusY = view === 'machine' ? cabinet.y + machineCamera.focusY : bounds.y + bounds.height / 2
     const y = view === 'overview' ? 0 : exhibit.height / 2 - focusY * zoom
     const before = this.world.style.transform || 'translate(0px, 0px) scale(1)'
     const after = 'translate(' + x + 'px, ' + y + 'px) scale(' + zoom + ')'

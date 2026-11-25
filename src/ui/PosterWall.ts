@@ -21,7 +21,7 @@ function stickerElement(sticker: Sticker) {
 
 export function posterElement(poster: Poster, editable = false) {
   const print = document.createElement('span')
-  print.className = poster.version === 2 ? 'print print-edition' : 'print'
+  print.className = poster.version === 3 ? 'print print-exhibition' : poster.version === 2 ? 'print print-edition' : 'print'
   const colors = posterPalette(poster)
   print.style.setProperty('--print-paper', colors.paper)
   if (poster.version === 1 && colors.field) {
@@ -42,6 +42,12 @@ export function posterElement(poster: Poster, editable = false) {
   title.textContent = '扭蛋黄'
   number.textContent = '#' + poster.id.slice(0, 8).toUpperCase()
   print.append(title, number)
+  if (poster.version === 3) {
+    const date = document.createElement('span')
+    date.className = 'print-date'
+    date.textContent = poster.createdAt.slice(0, 10).replaceAll('-', '.')
+    print.append(date)
+  }
   if (poster.caption) {
     const caption = document.createElement('span')
     caption.className = 'print-caption'
@@ -160,7 +166,12 @@ export class PosterWall {
         tile.dataset.native = ''
         tile.dataset.poster = poster.id
         tile.setAttribute('aria-label', '查看海报 ' + poster.id.slice(0, 8))
-        tile.append(posterElement(poster))
+        const pin = document.createElement('span')
+        pin.className = 'poster-pin'
+        pin.setAttribute('aria-hidden', 'true')
+        const colors = ['#f74e42', '#ffcf2d', '#57a7ef']
+        pin.style.setProperty('--pin', colors[parseInt(poster.id.slice(-4), 16) % colors.length])
+        tile.append(posterElement(poster), pin)
         tile.addEventListener('click', () => this.show(poster))
         this.tiles.set(poster.id, tile)
       }

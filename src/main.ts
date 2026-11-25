@@ -16,7 +16,7 @@ import './ui/styles.css'
 async function start() {
   const app = new AppController({ ...initialSettings })
   const ui = new UIManager(app.settings, () => app.tune(), () => app.shake(performance.now()),
-    take, cancelAction, () => ui.showArchiveMode(wall.store.mode), () => void savePoster(), closePoster)
+    take, cancelAction, () => ui.showArchiveMode(wall.store.mode), () => void generatePoster(), closePoster, () => void pinPoster())
   const scene = new SceneRenderer()
   const wall = new PosterWall(ui.gallery, async poster => {
     if (ui.camera.locked || ui.camera.view !== 'wall' || ui.modalOpen) return
@@ -32,7 +32,7 @@ async function start() {
   let nextDrop = 0
   let lidSide: LidSide | undefined
   let exporting = false
-  let draft: { poster: Poster; items: CapsuleResult[]; png?: Blob; submitted?: boolean } | undefined
+  let draft: { poster: Poster; items: CapsuleResult[]; png?: Blob } | undefined
 
   function refresh() {
     ui.update(app.shaking, app.retainedCount, exporting)
@@ -46,33 +46,48 @@ async function start() {
       draft = { items, poster: createPoster(items) }
     }
     cancelAction()
-    ui.showEditor(draft.poster, !!draft.submitted)
+    if (draft.png) ui.showCard(draft.png, true)
+    else ui.showEditor(draft.poster)
   }
 
   function closePoster() {
-    if (!draft?.submitted) draft = undefined
+    if (!draft?.png) draft = undefined
     if (active === 'sticker') active = undefined
   }
 
-  async function savePoster() {
+  async function generatePoster() {
     const pending = draft
     if (!pending || exporting) return
     exporting = true
     refresh()
-    ui.setPosterStatus(true, true)
+    ui.setPosterStatus(true)
     try {
-      pending.png ??= await createSouvenir(pending.poster)
-      pending.submitted = true
+      pending.png = await createSouvenir(pending.poster)
+      ui.showCard(pending.png, true)
+    } catch (error) {
+      console.error(error)
+      ui.setPosterStatus(false, '生成失败，Emoji 已保留。')
+    } finally {
+      exporting = false
+      refresh()
+    }
+  }
+
+  async function pinPoster() {
+    const pending = draft
+    if (!pending?.png || exporting) return
+    exporting = true
+    refresh()
+    ui.setPosterStatus(true)
+    try {
       const saved = await wall.store.save(pending.poster)
       app.take(pending.items)
       draft = undefined
       wall.add(saved)
-      cancelAction()
-      ui.showCard(pending.png)
-      if (wall.store.mode === 'local') ui.setPosterStatus(false, false, '海报已保存在这台设备。')
+      ui.setPosterStatus(false, wall.store.mode === 'local' ? '已贴到这台设备的海报墙。' : '已贴到海报墙。', true)
     } catch (error) {
       console.error(error)
-      ui.setPosterStatus(false, !!pending.submitted, '保存失败，Emoji 已保留。')
+      ui.setPosterStatus(false, '粘贴失败，Emoji 已保留。')
     } finally {
       exporting = false
       refresh()
@@ -81,7 +96,7 @@ async function start() {
 
   function setLid(side?: LidSide) {
     lidSide = side
-    ui.setLid(side)
+    app.setFeedLid(side)
     nextDrop = side ? performance.now() + 125 : 0
   }
 
@@ -216,7 +231,7 @@ async function start() {
   function frame(now: number) {
     const delta = now - previous
     input.update(now)
-    if (lidSide && nextDrop && now >= nextDrop) {
+    if (lidSide && lidSide === app.lidSide && nextDrop && now >= nextDrop) {
       nextDrop = now + dropInterval
       if (app.drop(lidSide)) capacityMessage = false
       else if (!capacityMessage) {
@@ -225,6 +240,7 @@ async function start() {
       }
     }
     app.tick(now, delta)
+    ui.setLid(app.lidSide)
     scene.render(app.entities, app.heldId)
     refresh()
     if (ui.camera.view === 'wall' && !ui.camera.locked && !ui.modalOpen) wall.tick(delta)

@@ -15,7 +15,7 @@ export class CapsuleLever {
 
   start(y: number) {
     if (this.button.disabled || this.pull) return false
-    this.pull = { startY: y, travel: this.track.getBoundingClientRect().height * 0.47, progress: 0 }
+    this.pull = { startY: y, travel: this.track.getBoundingClientRect().height * 0.38, progress: 0 }
     this.button.dataset.pulling = ''
     return true
   }

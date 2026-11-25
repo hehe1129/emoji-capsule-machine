@@ -35,7 +35,7 @@ export class PosterEditor {
       const sticker = this.poster?.stickers[index]
       if (!this.locked && step && sticker) {
         event.preventDefault()
-        moveSticker(sticker, sticker.x + step.x, sticker.y + step.y)
+        moveSticker(sticker, sticker.x + step.x, sticker.y + step.y, this.poster?.version)
         positionSticker(target, sticker)
       }
     })
@@ -102,7 +102,7 @@ export class PosterEditor {
     const { index, offset, target } = this.held
     const point = this.coordinates(screen)
     const sticker = this.poster.stickers[index]
-    moveSticker(sticker, point.x + offset.x, point.y + offset.y)
+    moveSticker(sticker, point.x + offset.x, point.y + offset.y, this.poster.version)
     positionSticker(target, sticker)
   }
 

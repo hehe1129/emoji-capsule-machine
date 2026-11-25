@@ -1,14 +1,14 @@
 import Matter from 'matter-js'
-import { arena, cabinet, hatchEnd, hatchX, type Settings } from '../core/config'
+import { arena, cabinet, groundY, hatchEnd, hatchX, lid, roofY, room, type LidSide, type Settings } from '../core/config'
 import type { Point } from '../input/InputManager'
 
-const { Bodies, Body, Composite, Engine, Events } = Matter
+const { Bodies, Body, Composite, Engine, Events, Query, Vertices } = Matter
 export const physicsStep = 1000 / 120
 const maxSpeed = 24
 const matterVelocityStep = 1000 / 60
 const followSpeed = 1650 // scene units per second
 const followTimeMs = 45
-const inletTop = -120
+const roomTop = -240
 const trayBottom = arena.height + cabinet.tray.height
 const wall = { isStatic: true, friction: 0.05 }
 // The return grate becomes solid for each body after it crosses the threshold.
@@ -21,33 +21,51 @@ function gate(category: number) {
     { ...wall, collisionFilter: { category, mask: 1, group: 0 } })
 }
 
-function withinArena(point: Point, radius: number) {
-  return {
-    x: Math.min(arena.width - radius, Math.max(radius, point.x)),
-    y: Math.min(arena.height - radius, Math.max(radius, point.y)),
-  }
+function segment(a: Point, b: Point, thickness = 12) {
+  return Bodies.rectangle((a.x + b.x) / 2, (a.y + b.y) / 2,
+    Math.hypot(b.x - a.x, b.y - a.y), thickness,
+    { ...wall, angle: Math.atan2(b.y - a.y, b.x - a.x) })
 }
+
+const capOutline = [
+  { x: 0, y: roofY }, { x: 0, y: 68 - cabinet.chamber.y },
+  { x: arena.width / 2, y: 7 - cabinet.chamber.y },
+  { x: arena.width, y: 68 - cabinet.chamber.y }, { x: arena.width, y: roofY },
+]
+const capCenter = Vertices.centre(capOutline as Matter.Vector[])
 
 export class PhysicsManager {
   private readonly engine = Engine.create({ positionIterations: 8 })
   private readonly collisions: [Matter.Body, Matter.Body][] = []
   private readonly hatch = gate(shutterCategory)
   private hatchOpen = false
+  private readonly roof = Bodies.fromVertices(capCenter.x, capCenter.y, [capOutline], wall)
+  private readonly dragObstacles: Matter.Body[]
+  lidSide?: LidSide
 
   constructor() {
     const { width, height } = arena
     const thickness = 28
-    Composite.add(this.engine.world, [
+    const boundaries = [
       Bodies.rectangle(hatchX / 2, height + thickness / 2, hatchX, thickness, wall),
       Bodies.rectangle((hatchEnd + width) / 2, height + thickness / 2, width - hatchEnd, thickness, wall),
-      Bodies.rectangle(-thickness / 2, (height + inletTop) / 2, thickness, height - inletTop, wall),
-      Bodies.rectangle(width + thickness / 2, (height + inletTop) / 2, thickness, height - inletTop, wall),
+      Bodies.rectangle(-6, (height + roofY) / 2, 12, height - roofY, wall),
+      Bodies.rectangle(width + 6, (height + roofY) / 2, 12, height - roofY, wall),
       Bodies.rectangle(hatchX - thickness / 2, height + cabinet.tray.height / 2, thickness, cabinet.tray.height, wall),
       Bodies.rectangle(hatchEnd + thickness / 2, height + cabinet.tray.height / 2, thickness, cabinet.tray.height, wall),
       Bodies.rectangle((hatchX + hatchEnd) / 2, trayBottom + thickness / 2, hatchEnd - hatchX + thickness, thickness, wall),
       this.hatch,
       gate(returnCategory),
-    ])
+      segment({ x: -2, y: height - 4 }, { x: -40, y: groundY + 12 }),
+      segment({ x: width + 2, y: height - 4 }, { x: width + 40, y: groundY + 12 }),
+      Bodies.rectangle((room.left + room.right) / 2, groundY + 20, room.right - room.left + 60, 40, { ...wall, friction: 0.16 }),
+      Bodies.rectangle(room.left - 10, (groundY + roomTop) / 2, 20, groundY - roomTop + 40, wall),
+      Bodies.rectangle(room.right + 10, (groundY + roomTop) / 2, 20, groundY - roomTop + 40, wall),
+      Bodies.rectangle((room.left + room.right) / 2, roomTop - 10, room.right - room.left, 20, wall),
+      this.roof,
+    ]
+    this.dragObstacles = boundaries
+    Composite.add(this.engine.world, boundaries)
     Events.on(this.engine, 'collisionStart', ({ pairs }) => {
       for (const { bodyA, bodyB } of pairs) {
         // Held Emoji are static while the pointer drives them, but can still collide.
@@ -73,22 +91,54 @@ export class PhysicsManager {
     Composite.remove(this.engine.world, body)
   }
 
-  move(body: Matter.Body, point: Point, radius: number) {
-    Body.setPosition(body, withinArena(point, radius))
-  }
-
-  follow(body: Matter.Body, point: Point, radius: number) {
-    const target = withinArena(point, radius)
-    const { x, y } = body.position
-    const dx = target.x - x
-    const dy = target.y - y
-    const distance = Math.hypot(dx, dy)
-    if (distance < 0.1) {
-      if (distance > 0) Body.setPosition(body, target)
+  setLid(side: LidSide | undefined, pieces: Matter.Body[]) {
+    if (this.lidSide === side) return
+    const previous = this.lidSide
+    this.placeLid(side)
+    // Wait for the opening to clear before closing across an Emoji.
+    if (!side && Query.collides(this.roof, pieces).some(contact => contact.depth > 1)) {
+      this.placeLid(previous)
       return
     }
-    const fraction = Math.min(1 - Math.exp(-physicsStep / followTimeMs), followSpeed * physicsStep / (1000 * distance))
-    Body.setPosition(body, { x: x + dx * fraction, y: y + dy * fraction })
+    this.lidSide = side
+  }
+
+  private placeLid(side: LidSide | undefined) {
+    const angle = side === 'left' ? lid.angle : side === 'right' ? -lid.angle : 0
+    const pivot = side === 'left' ? arena.width : 0
+    const x = capCenter.x - pivot
+    const y = capCenter.y - roofY
+    Body.setAngle(this.roof, angle)
+    Body.setPosition(this.roof, {
+      x: pivot + x * Math.cos(angle) - y * Math.sin(angle),
+      y: roofY + x * Math.sin(angle) + y * Math.cos(angle),
+    })
+  }
+
+  follow(body: Matter.Body, point: Point, smooth: boolean) {
+    const start = { ...body.position }
+    const dx = point.x - start.x
+    const dy = point.y - start.y
+    const distance = Math.hypot(dx, dy)
+    if (distance < 0.05) return
+    const fraction = Math.min(smooth ? 1 - Math.exp(-physicsStep / followTimeMs) : 1,
+      followSpeed * physicsStep / (1000 * distance))
+    const x = dx * fraction
+    const y = dy * fraction
+    if (this.tryMove(body, start, x, y)) return
+    if (Math.abs(x) >= Math.abs(y)) {
+      if (!this.tryMove(body, start, x, 0)) this.tryMove(body, start, 0, y)
+    } else if (!this.tryMove(body, start, 0, y)) {
+      this.tryMove(body, start, x, 0)
+    }
+  }
+
+  private tryMove(body: Matter.Body, start: Point, x: number, y: number) {
+    if (Math.hypot(x, y) < 0.05) return false
+    Body.setPosition(body, { x: start.x + x, y: start.y + y })
+    if (!Query.collides(body, this.dragObstacles).some(contact => contact.depth > 0.8)) return true
+    Body.setPosition(body, start)
+    return false
   }
 
   hold(body: Matter.Body, held: boolean) {
@@ -153,13 +203,13 @@ export class PhysicsManager {
   contain(body: Matter.Body, radius: number, retained: boolean) {
     const point = body.position
     if (![point.x, point.y, body.angle, body.velocity.x, body.velocity.y].every(Number.isFinite)) return 'invalid'
-    const left = retained ? hatchX : 0
-    const right = retained ? hatchEnd : arena.width
-    const top = retained ? arena.height : inletTop
-    if (point.x < left - radius || point.x > right + radius || point.y < top - radius || point.y > trayBottom + radius) {
+    const left = retained ? hatchX : room.left
+    const right = retained ? hatchEnd : room.right
+    const top = retained ? arena.height : roomTop
+    if (point.x < left - radius || point.x > right + radius || point.y < top - radius || point.y > (retained ? trayBottom : groundY) + radius) {
       Body.setPosition(body, {
         x: Math.min(right - radius, Math.max(left + radius, point.x)),
-        y: retained ? trayBottom - radius - 2 : radius + 8,
+        y: retained ? trayBottom - radius - 2 : Math.min(groundY - radius - 2, Math.max(roomTop + radius + 2, point.y)),
       })
       Body.setVelocity(body, { x: 0, y: 0 })
       Body.setAngularVelocity(body, 0)

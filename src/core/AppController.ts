@@ -1,4 +1,4 @@
-import { arena, hatchX, hatchEnd, shakeDuration, type LidSide, type Settings } from './config'
+import { arena, hatchX, hatchEnd, roofY, shakeDuration, type LidSide, type Settings } from './config'
 import { PhysicsManager, physicsStep } from '../physics/PhysicsManager'
 import { ReactionEngine } from '../reactions/ReactionEngine'
 import type { EmojiEntity } from '../emoji/EmojiEntity'
@@ -13,7 +13,9 @@ export class AppController {
   private readonly physics = new PhysicsManager()
   private readonly reactions = new ReactionEngine()
   private readonly objects = new Map<number, EmojiEntity>()
-  private held?: { entity: EmojiEntity; offset: Point; target?: Point; previous: Point; velocity: Point }
+  private held?: { entity: EmojiEntity; offset: Point; target?: Point; smooth: boolean; previous: Point; velocity: Point }
+  private feedSide?: LidSide
+  private dragSide?: LidSide
   private accumulated = 0
   private shakeStarted?: number
   private nextJolt = 0
@@ -45,6 +47,25 @@ export class AppController {
 
   get shaking() {
     return this.shakeStarted !== undefined
+  }
+
+  get lidSide() {
+    return this.physics.lidSide
+  }
+
+  setFeedLid(side?: LidSide) {
+    this.feedSide = side
+  }
+
+  private updateLid() {
+    const position = this.held?.entity.body.position
+    const aim = this.held?.target
+    const near = position && aim && position.y < roofY + 83 && position.y > roofY - 145 &&
+      position.x > -115 && position.x < arena.width + 115 &&
+      aim.y < roofY + 65 && aim.y > roofY - 148
+    this.dragSide = near ? this.dragSide ?? (position.x <= arena.width / 2 ? 'left' : 'right') : undefined
+    const side = this.feedSide ?? this.dragSide
+    if (side !== this.lidSide) this.physics.setLid(side, Array.from(this.entities, entity => entity.body))
   }
 
   drop(side: LidSide) {
@@ -82,7 +103,7 @@ export class AppController {
     let closest: EmojiEntity | undefined
     let minDistance = Infinity
     for (const entity of this.entities) {
-      if (entity.retained || entity.body.position.y < entity.radius || entity.body.position.y > arena.height) continue
+      if (entity.retained) continue
       const distance = Math.hypot(entity.body.position.x - point.x, entity.body.position.y - point.y)
       if (distance <= entity.radius + this.settings.grabRange && distance <= minDistance) {
         closest = entity
@@ -94,7 +115,7 @@ export class AppController {
     this.held = {
       entity: closest,
       offset: { x: x - point.x, y: y - point.y },
-      previous: { x, y },
+      previous: { x, y }, smooth: false,
       velocity: { x: 0, y: 0 },
     }
     this.physics.hold(closest.body, true)
@@ -102,18 +123,15 @@ export class AppController {
 
   drag(point: Point, smooth = false) {
     if (!this.held) return
-    const { entity, offset } = this.held
+    const { offset } = this.held
     const target = { x: point.x + offset.x, y: point.y + offset.y }
-    if (smooth) this.held.target = target
-    else this.physics.move(entity.body, target, entity.radius)
+    this.held.target = target
+    this.held.smooth = smooth
   }
 
   release(throwHeld = false) {
     if (!this.held) return
-    const { previous, entity } = this.held
-    if (throwHeld && (entity.body.position.x !== previous.x || entity.body.position.y !== previous.y)) {
-      this.stepDrag()
-    }
+    if (throwHeld) this.stepDrag()
     const { entity: { body }, velocity } = this.held
     this.physics.hold(body, false)
     this.physics.tune(body, this.settings)
@@ -123,8 +141,8 @@ export class AppController {
 
   private stepDrag() {
     if (!this.held) return
-    const { entity, target, previous, velocity } = this.held
-    if (target) this.physics.follow(entity.body, target, entity.radius)
+    const { entity, target, smooth, previous, velocity } = this.held
+    if (target) this.physics.follow(entity.body, target, smooth)
     const { x, y } = entity.body.position
     const dx = x - previous.x
     const dy = y - previous.y
@@ -177,12 +195,14 @@ export class AppController {
     if (phase !== undefined && now >= this.nextJolt) {
       this.nextJolt = now + 310
       for (const { body, retained } of this.entities) {
-        if (!body.isStatic) this.physics.shake(body, phase, !!retained)
+        if (!body.isStatic && body.position.x >= 0 && body.position.x <= arena.width &&
+          body.position.y >= roofY) this.physics.shake(body, phase, !!retained)
       }
     }
     this.accumulated += Math.min(delta, 64)
     while (this.accumulated >= physicsStep) {
       this.accumulated -= physicsStep
+      this.updateLid()
       this.stepDrag()
       this.reactions.advance(this.entities, physicsStep, this.settings.reactionCooldown)
       for (const [bodyA, bodyB] of this.physics.step(this.settings.gravity, phase)) {
