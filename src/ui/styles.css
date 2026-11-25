@@ -32,7 +32,15 @@ button, input, summary { -webkit-tap-highlight-color: transparent; }
   isolation: isolate;
   background: var(--room);
   touch-action: none;
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
   user-select: none;
+}
+
+.surface :is(#debug, input, textarea, [contenteditable="true"]) {
+  -webkit-touch-callout: default;
+  -webkit-user-select: auto;
+  user-select: auto;
 }
 .fit, .world, .room { position: absolute; inset: 0 auto auto 0; width: 1920px; height: 1080px; }
 .fit, .world { transform-origin: top left; }

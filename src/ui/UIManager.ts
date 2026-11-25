@@ -83,6 +83,13 @@ export class UIManager {
     onPinPoster: () => void,
     onReroll: () => void,
   ) {
+    for (const type of ['contextmenu', 'selectstart', 'dragstart']) {
+      this.surface.addEventListener(type, event => {
+        const target = event.target
+        if (target instanceof Element && target.closest('#debug, input, textarea, [contenteditable="true"]')) return
+        event.preventDefault()
+      })
+    }
     place(this.playfield, cabinet.chamber)
     place(element('collector'), cabinet.tray)
     this.cabinetArt.style.setProperty('--tray-left', cabinet.tray.x + 'px')
@@ -242,6 +249,7 @@ export class UIManager {
     this.download.hidden = false
     this.download.href = this.cardUrl
     const image = new Image()
+    image.draggable = false
     image.src = this.cardUrl
     image.alt = '扭蛋黄纪念海报'
     image.className = 'poster-preview-image'
