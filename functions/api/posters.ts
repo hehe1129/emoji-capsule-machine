@@ -9,7 +9,7 @@ type Statement = {
 type Environment = { POSTERS?: { prepare(sql: string): Statement } }
 type Context = { env: Environment; request: Request }
 const pageSize = 24
-const maxBytes = 22000
+const maxBytes = 256000
 
 const response = (data: unknown, status = 200) => Response.json(data, {
   status,

@@ -22,7 +22,7 @@ async function start() {
     closePoster, () => void pinPoster(), rerollPoster, (left, right, top) => app.resizeRoom(left, right, top))
   const scene = new SceneRenderer()
   const examples: CapsuleResult['kind'][][] = [
-    ['chicken', 'heart'], ['moon', 'cat', 'fish'], ['lightning', 'turtle', 'angry'], ['sun', 'chicken'],
+    ['chick', 'heart'], ['moon', 'cat', 'fish'], ['lightning', 'turtle', 'angry'], ['sun', 'chick'],
   ]
   const samples = import.meta.env.DEV && new URLSearchParams(location.search).has('layout-preview')
     ? examples.map((kinds, index) => ({
@@ -85,6 +85,7 @@ async function start() {
 
   function closePoster() {
     if (draft?.png) app.take(draft.items)
+    app.releasePosterSelection()
     draft = undefined
     refresh()
     for (const [pointer, action] of actions) if (action === 'sticker') actions.delete(pointer)
@@ -297,7 +298,7 @@ async function start() {
     }
     app.tick(now, delta)
     ui.setLid(app.lidSide)
-    scene.render(app.entities, app.heldIds)
+    scene.render(app.entities, app.heldIds, app.water)
     refresh()
     if (now - lastWallSync >= 15000) {
       lastWallSync = now

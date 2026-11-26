@@ -103,6 +103,12 @@ export class PosterWall {
         this.items = page.items
         this.next = page.next
       }
+      while (this.items.length < this.showcaseCount && this.next) {
+        const more = await this.store.list(this.next)
+        const ids = new Set(this.items.map(item => item.id))
+        this.items.push(...more.items.filter(item => !ids.has(item.id)))
+        this.next = more.next
+      }
       this.render()
     } catch {
       this.report('海报墙暂时无法同步。')

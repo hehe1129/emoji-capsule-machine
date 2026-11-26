@@ -112,7 +112,7 @@ button, input, summary { -webkit-tap-highlight-color: transparent; }
 }
 .world[data-view="machine"] .scene-token[data-on-ground] { visibility: hidden; }
 .scene-portrait { position: absolute; width: 46px; height: 46px; left: -23px; top: -23px; }
-.scene-portrait, .poster-art { image-rendering: pixelated; }
+.scene-portrait, .poster-art { object-fit: contain; }
 .lid-hit {
   position: absolute; inset: 0 0 auto; height: 157px; padding: 0; border: 0; background: none;
   cursor: grab;

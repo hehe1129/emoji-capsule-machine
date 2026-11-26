@@ -1,0 +1,8 @@
+.reaction-fx, .fx-art, .fx-accent { position: absolute; pointer-events: none; }
+.fx-art { width: 46px; height: 46px; left: -23px; top: -23px; object-fit: contain; }
+.fx-sleep { left: 12px; top: -34px; font: 700 12px "Source Han Sans", sans-serif; color: #465d85; }
+.fx-dash, .fx-break { width: 54px; height: 54px; left: -27px; top: -27px; background: #ffc633;
+  clip-path: polygon(2% 57%, 31% 20%, 23% 49%, 42% 39%, 12% 81%, 21% 54%, 2% 57%, 70% 30%, 97% 0, 83% 32%, 98% 25%, 69% 61%, 78% 32%, 70% 30%); }
+.fx-break { width: 14px; height: 30px; left: -7px; top: -15px; background: #79344a; clip-path: polygon(60% 0, 25% 42%, 55% 47%, 18% 100%, 85% 40%, 55% 36%); }
+.fx-rainbow { left: -17px; top: 3px; width: 3px; height: 8px; border-radius: 60%; background: #58a7de; box-shadow: 10px 3px #73c4ee, 21px -4px #58a7de, 30px 3px #73c4ee; }
+.fx-thrust { left: -6px; top: 12px; width: 13px; height: 22px; background: #ff9c32; clip-path: polygon(0 0, 100% 0, 75% 57%, 50% 100%, 30% 65%); }

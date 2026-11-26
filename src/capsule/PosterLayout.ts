@@ -1,3 +1,4 @@
+import { stateKeys } from '../reactions/ReactionRules'
 import { catalog, emojiKinds, type EmojiKind } from '../emoji/catalog'
 import type { CapsuleResult } from './CapsuleResult'
 import type { EmojiArtwork } from '../emoji/emojiImage'
@@ -21,7 +22,6 @@ export const artworkArea = { left: 42, right: 558, top: 142, bottom: 688 } as co
 export const galleryArtwork = { left: 26, right: 574, top: 111, bottom: 648 } as const
 
 type ReactionState = NonNullable<CapsuleResult['state']>
-export const stateKeys = ['grow', 'sleep', 'dash', 'soothe', 'brighten', 'chase'] as const
 
 export interface Sticker {
   kind: EmojiKind
@@ -56,7 +56,7 @@ export function moveSticker(sticker: Sticker, x: number, y: number, version: Pos
 function writeCaption(items: readonly CapsuleResult[], variation: number) {
   const kinds = Array.from(new Set(items.map(item => item.kind)))
   const choose = (lines: string[]) => lines[variation % lines.length]
-  if (items.some(item => item.state?.chase)) return choose(['鱼跑得比猫快', '午饭跑丢了', '猫说下次再追'])
+  if (items.some(item => item.state?.chase)) return choose(['猫把午饭吃成心', '一口吃出心动', '小鱼今天加餐'])
   if (items.some(item => item.state?.dash)) return choose(['龟速今天请假', '乌龟偷了道闪电', '壳里装了马达'])
   if (items.some(item => item.state?.sleep)) return choose(['小鸡借月亮充电', '鸡先睡为敬', '月亮值夜班'])
   if (items.some(item => item.state?.grow)) return choose(['虫子不够塞牙', '小鸡偷偷加餐', '一口吃大一圈'])
@@ -69,11 +69,15 @@ function writeCaption(items: readonly CapsuleResult[], variation: number) {
   if (kinds.includes('sun') && kinds.includes('moon')) return choose(['月亮误入晴天', '日月换个班', '太阳约月亮宵夜'])
   const first = catalog[kinds[0]]
   const second = catalog[kinds[1]]
+  if (first.length + second.length > 7) return choose([first + '遇见' + second, first + '约' + second])
   return choose([first + '约' + second + '串门', first + '和' + second + '同桌', first + '拉' + second + '出逃'])
 }
 export function portrait(kind: EmojiKind, state?: ReactionState): { kind: EmojiArtwork; tilt: number } {
-  if (state?.sleep) return { kind, tilt: 0.3 }
-  if (state?.soothe || state?.brighten) return { kind: 'smile', tilt: 0 }
+  if (state?.sleep && (kind === 'chick' || kind === 'chicken')) return { kind: 'sleeping-chick', tilt: 0.3 }
+  if (state?.thrust && kind === 'snail') return { kind: 'mounted-snail', tilt: 0 }
+  if (state?.elongate && kind === 'tulip') return { kind: `tulip-${state.elongate}`, tilt: 0 }
+  if (state?.soothe && kind === 'angry') return { kind: 'smiling', tilt: 0 }
+  if (state?.brighten && kind === 'sad') return { kind: 'happy', tilt: 0 }
   if (state?.dash) return { kind, tilt: -0.1 }
   return { kind, tilt: 0 }
 }
@@ -158,7 +162,7 @@ export function isPoster(value: unknown): value is Poster {
     (p.version === 1 && p.caption !== undefined) ||
     (p.version !== 1 && (typeof p.caption !== 'string' || !p.caption.trim() ||
       /[\x00-\x1f]/.test(p.caption) || Array.from(p.caption).length > (p.version === 3 ? 10 : 20))) ||
-    !Array.isArray(p.stickers) || !p.stickers.length || p.stickers.length > 80) return false
+    !Array.isArray(p.stickers) || !p.stickers.length || p.stickers.length > 500) return false
   return p.stickers.every(s => {
     if (!s || !hasOnly(s, ['kind', 'state', 'source', 'x', 'y', 'size', 'tilt']) ||
       !isKind(s.kind) || ![s.x, s.y, s.size, s.tilt].every(Number.isInteger) ||

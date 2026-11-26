@@ -1,45 +1,33 @@
 import type { EmojiKind } from '../emoji/catalog'
 
-export type ReactionEffect = 'grow' | 'sleep' | 'dash' | 'soothe' | 'brighten' | 'chase'
+// The tulip continuation belongs to the plant-growth recipe.
+export const reactionRules = [
+  { actor: 'chick', ingredient: 'caterpillar', effect: 'grow', duration: 620, name: '小鸡吃虫' },
+  { actor: 'chick', ingredient: 'moon', effect: 'sleep', duration: 760, name: '小鸡睡觉' },
+  { actor: 'turtle', ingredient: 'lightning', effect: 'dash', duration: 2000, name: '闪电乌龟' },
+  { actor: 'cat', ingredient: 'fish', effect: 'chase', duration: 650, result: 'heart_eyes_cat', name: '猫咪开饭' },
+  { actor: 'angry', ingredient: 'heart', effect: 'soothe', duration: 880, result: 'smiling', name: '情绪治愈' },
+  { actor: 'crying', ingredient: 'sun', effect: 'brighten', duration: 900, result: 'happy', name: '雨过天晴' },
+  { actor: 'seedling', ingredient: 'water', effect: 'bloom', duration: 820, result: 'tulip', name: '植物生长' },
+  { actor: 'tulip', ingredient: 'water', effect: 'elongate', duration: 650, name: '郁金香长高' },
+  { actor: 'rain_cloud', ingredient: 'sun', effect: 'rainbow', duration: 1050, result: 'rainbow', name: '彩虹诞生' },
+  { actor: 'ice', ingredient: 'fire', effect: 'melt', duration: 920, name: '冰块融水' },
+  { actor: 'snail', ingredient: 'rocket', effect: 'thrust', duration: 1050, name: '火箭蜗牛' },
+  { actor: 'heart', ingredient: 'lightning', effect: 'break', duration: 680, result: 'broken_heart', name: '心碎瞬间' },
+  { actor: 'gift', ingredient: 'star', effect: 'unwrap', duration: 720, name: '惊喜礼物' },
+] as const satisfies readonly { actor: EmojiKind; ingredient: EmojiKind; effect: string; duration: number; name: string; result?: EmojiKind }[]
+export type ReactionRule = typeof reactionRules[number]
+export type ReactionEffect = ReactionRule['effect']
+export const stateKeys = reactionRules.map(rule => rule.effect)
 
-export interface ReactionRule {
-  actor: EmojiKind
-  ingredient: EmojiKind
-  name: string
-  message: string
-  effect: ReactionEffect
-  duration: number
-  maxUses?: number
-  consumeIngredient?: boolean
-  growth?: { steps: number; maxRadiusRatio: number }
-  motion?: 'settle' | 'boost'
+// Index both orders once. Ordinary contacts are common in a full machine.
+const contacts = new Map<EmojiKind, Map<EmojiKind, ReactionRule>>()
+for (const rule of reactionRules) {
+  for (const [a, b] of [[rule.actor, rule.ingredient], [rule.ingredient, rule.actor]] as const) {
+    let row = contacts.get(a)
+    if (!row) contacts.set(a, row = new Map())
+    row.set(b, rule)
+  }
 }
 
-export const reactionRules: readonly ReactionRule[] = [
-  {
-    actor: 'chicken', ingredient: 'worm', name: '吃饱的小鸡',
-    message: '小鸡吃掉虫子，又长大了一点！', effect: 'grow',
-    growth: { steps: 10, maxRadiusRatio: 0.12 }, duration: 480,
-  },
-  {
-    actor: 'chicken', ingredient: 'moon', name: '睡着的小鸡',
-    message: '月亮一出来，小鸡就睡着了。', effect: 'sleep', motion: 'settle', duration: 950,
-  },
-  {
-    actor: 'turtle', ingredient: 'lightning', name: '闪电乌龟',
-    message: '乌龟碰到闪电，突然加速！', effect: 'dash', motion: 'boost',
-    maxUses: Infinity, consumeIngredient: false, duration: 720,
-  },
-  {
-    actor: 'angry', ingredient: 'heart', name: '平静下来的脸',
-    message: '收到爱心，气慢慢消了。', effect: 'soothe', duration: 800,
-  },
-  {
-    actor: 'sad', ingredient: 'sun', name: '破涕为笑的脸',
-    message: '太阳出来了，泪汪汪笑了。', effect: 'brighten', duration: 800,
-  },
-  {
-    actor: 'cat', ingredient: 'fish', name: '追鱼的小猫',
-    message: '小猫发现了小鱼。', effect: 'chase', maxUses: Infinity, consumeIngredient: false, duration: 680,
-  },
-]
+export const findRecipe = (a: EmojiKind, b: EmojiKind) => contacts.get(a)?.get(b)

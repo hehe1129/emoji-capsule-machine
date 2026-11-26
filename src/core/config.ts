@@ -26,14 +26,14 @@ export const hatchMotionMs = 260
 export const hatchX = trayX + hatchInset
 export const hatchEnd = trayEnd - hatchInset
 export const hatchThickness = 13
-export const dropInterval = 700
+export const dropInterval = 300
 export const shakeDuration = 3000
 
 export const settingsSchema = {
   gravity: { label: '重力', initial: 1, min: 0, max: 2, step: 0.05 },
   restitution: { label: '弹性', initial: 0.68, min: 0, max: 0.95, step: 0.01 },
   friction: { label: '摩擦力', initial: 0.08, min: 0, max: 0.6, step: 0.01 },
-  maxEmoji: { label: '投放上限', initial: 48, min: 10, max: 80, step: 1 },
+  maxEmoji: { label: '投放上限', initial: 500, min: 10, max: 500, step: 1 },
   smoothing: { label: '光标平滑', initial: 0.25, min: 0, max: 0.9, step: 0.05 },
   grabRange: { label: '抓取容差（场景单位）', initial: 15, min: 0, max: 45, step: 1 },
   reactionCooldown: { label: '反应冷却（毫秒）', initial: 600, min: 0, max: 3000, step: 50 },

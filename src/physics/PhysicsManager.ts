@@ -64,13 +64,15 @@ export class PhysicsManager {
     this.dragObstacles = boundaries
     Composite.add(this.engine.world, boundaries)
     this.resizeRoom(room.left, room.right)
-    Events.on(this.engine, 'collisionStart', ({ pairs }) => {
+    const recordContacts = ({ pairs }: Matter.IEventCollision<Matter.Engine>) => {
       for (const { bodyA, bodyB } of pairs) {
         // Held Emoji are static while the pointer drives them, but can still collide.
         // The controller ignores cabinet bodies since those have no Emoji entity.
         if (!bodyA.isStatic || !bodyB.isStatic) this.collisions.push([bodyA, bodyB])
       }
-    })
+    }
+    Events.on(this.engine, 'collisionStart', recordContacts)
+    Events.on(this.engine, 'collisionActive', recordContacts)
   }
 
   resizeRoom(left: number, right: number, top = roomTop) {
@@ -148,6 +150,10 @@ export class PhysicsManager {
     }
   }
 
+  touch(first: Matter.Body, second: Matter.Body) {
+    return Matter.Bounds.overlaps(first.bounds, second.bounds) && !!Matter.Collision.collides(first, second)
+  }
+
   guideDrop(body: Matter.Body, point: Point) {
     Body.setPosition(body, point)
   }
@@ -166,26 +172,12 @@ export class PhysicsManager {
     Body.setStatic(body, held)
   }
 
-  grow(body: Matter.Body, factor: number) {
-    Body.scale(body, factor, factor)
-  }
-
   launch(body: Matter.Body, velocity: Point) {
     const speed = Math.hypot(velocity.x, velocity.y)
     if (speed < 0.06) return
     // Matter measures velocity per base 60 Hz step. Drag estimates use scene units per millisecond.
     const scale = Math.min(matterVelocityStep, maxSpeed / speed)
     Body.setVelocity(body, { x: velocity.x * scale, y: velocity.y * scale })
-  }
-
-  settle(body: Matter.Body) {
-    Body.setVelocity(body, { x: body.velocity.x * 0.15, y: body.velocity.y * 0.15 })
-    Body.setAngularVelocity(body, 0)
-  }
-
-  boost(body: Matter.Body) {
-    const direction = body.position.x < arena.width / 2 ? 1 : -1
-    Body.setVelocity(body, { x: 20 * direction, y: -7 })
   }
 
   moveHatch(open: boolean, pieces: Iterable<{ body: Matter.Body; radius: number }>) {
@@ -198,18 +190,13 @@ export class PhysicsManager {
     Body.setPosition(this.hatch, { x: (hatchX + hatchEnd) / 2 - gateWidth * this.hatchProgress, y: gateY })
     if (open) return
     // Clear the thickness of the moving slab on the nearest side before the solver runs.
-    for (const { body, radius } of pieces) {
+    for (const { body } of pieces) {
       if (!Query.collides(body, [this.hatch]).length) continue
+      const radius = (body.bounds.max.y - body.bounds.min.y) / 2
       const side = body.position.y < gateY ? -1 : 1
       Body.setPosition(body, { x: body.position.x, y: gateY + side * (hatchThickness / 2 + radius + 0.5) })
       if (!body.isStatic) Body.setVelocity(body, { x: body.velocity.x, y: side * 1.8 })
     }
-  }
-
-  chase(cat: Matter.Body, fish: Matter.Body) {
-    const direction = Math.sign(fish.position.x - cat.position.x) || 1
-    Body.setVelocity(fish, { x: direction * 13, y: -6 })
-    Body.setVelocity(cat, { x: direction * 16, y: -8 })
   }
 
   shake(body: Matter.Body, phase: number, retained: boolean) {

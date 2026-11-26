@@ -1,0 +1,7 @@
+Twemoji graphics by Twitter, Inc. and other contributors.
+Source: https://github.com/jdecked/twemoji/tree/v17.0.2/assets/svg
+Revision: 388f518b756404152f128a3539f5e7f9a6f1ebd6
+License: Creative Commons Attribution 4.0 International (CC BY 4.0)
+https://creativecommons.org/licenses/by/4.0/
+The codepoint-named SVGs are unmodified upstream artwork. Additional legacy SVGs are for previously saved posters.
+Gameplay composites use these graphics with motion, closed eyelids, a rocket mount or an extended flower stem.

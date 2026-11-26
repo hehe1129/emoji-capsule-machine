@@ -1,3 +1,4 @@
+import { creditPoster } from '../emoji/artworkCredit'
 import { emojiImageUrl, type EmojiArtwork } from '../emoji/emojiImage'
 import { portrait, posterPalette, posterSize, type Poster } from './PosterLayout'
 
@@ -9,7 +10,7 @@ const imageCache = new Map<EmojiArtwork, Promise<HTMLImageElement>>()
 function load(kind: EmojiArtwork) {
   const cached = imageCache.get(kind)
   if (cached) return cached
-  const image = new Image()
+  const image = new Image(900, 900)
   image.src = emojiImageUrl(kind)
   const promise = image.decode().then(() => image).catch(error => {
     imageCache.delete(kind)
@@ -28,7 +29,7 @@ export async function createSouvenir(poster: Poster) {
   const context = canvas.getContext('2d')
   if (!context) throw new Error('Canvas unavailable')
   context.scale(2, 2)
-  context.imageSmoothingEnabled = false
+  context.imageSmoothingEnabled = true
   const colors = posterPalette(poster)
   context.fillStyle = colors.paper
   context.fillRect(0, 0, width, height)
@@ -83,6 +84,6 @@ export async function createSouvenir(poster: Poster) {
     context.restore()
   }
   return new Promise<Blob>((resolve, reject) => {
-    canvas.toBlob(blob => blob ? resolve(blob) : reject(new Error('PNG encoding failed')), 'image/png')
+    canvas.toBlob(blob => blob ? resolve(creditPoster(blob)) : reject(new Error('PNG encoding failed')), 'image/png')
   })
 }
