@@ -1,20 +1,25 @@
 export type Point = { x: number; y: number }
-export type InputSample = {
+export const handPointers = ['hand-0', 'hand-1'] as const
+export type PointerId = 'mouse' | typeof handPointers[number]
+export type InputSample = ({
   position: Point
   gesture: 'hover' | 'open' | 'pinch'
   sampledAt?: number
   holdPosition?: boolean
-} | { gesture: 'lost'; trackingTimeout?: { at: number; hidden: boolean } }
+  pinchProgress?: number
+} | { gesture: 'lost'; trackingTimeout?: { at: number; hidden: boolean } }) & { pointer?: PointerId }
 
 export interface InputSource {
   connect(emit: (sample: InputSample) => void): () => void
 }
 
-export type InputAction = {
+type PointerAction = {
   position: Point
   type: 'move' | 'grab' | 'release'
   pressed: boolean
+  pinchProgress: number
 } | { type: 'cancel'; position?: Point; pressed: false }
+export type InputAction = PointerAction & { pointer: PointerId }
 
 const displayFrameMs = 1000 / 60
 const maxCursorSpeed = 0.0036 // normalized units per millisecond
@@ -25,14 +30,7 @@ const resumeAfterHideMs = 650
 // belong here so a camera can drive the same controls as a mouse.
 export class InputManager {
   private disconnect?: () => void
-  private position?: Point
-  private pressed = false
-  private pinchAnchor?: { offset: Point; previous: Point; remaining: number }
-  private cameraTarget?: Point
-  private lastCameraPoint?: Point
-  private suspectCameraPoint?: Point
-  private resumeUntil?: number
-  private frameAt?: number
+  private readonly pointers = new Map<PointerId, PointerFilter>()
 
   constructor(
     private readonly send: (action: InputAction) => void,
@@ -41,15 +39,52 @@ export class InputManager {
 
   use(source: InputSource) {
     this.disconnect?.()
-    this.disconnect = source.connect((sample) => this.accept(sample))
+    this.pointers.clear()
+    this.disconnect = source.connect(sample => {
+      const pointer = sample.pointer ?? 'mouse'
+      let filter = this.pointers.get(pointer)
+      if (!filter) {
+        filter = new PointerFilter(action => this.send({ ...action, pointer }), this.smoothing)
+        this.pointers.set(pointer, filter)
+      }
+      filter.accept(sample)
+    })
   }
+
+  update(now: number) {
+    for (const filter of this.pointers.values()) filter.update(now)
+  }
+}
+
+class PointerFilter {
+  private position?: Point
+  private pressed = false
+  private pinchAnchor?: { offset: Point; previous: Point; remaining: number }
+  private cameraTarget?: Point
+  private lastCameraPoint?: Point
+  private suspectCameraPoint?: Point
+  private resumeUntil?: number
+  private frameAt?: number
+  private pinchProgress = 0
+  private paintProgress = false
+
+  constructor(
+    private readonly send: (action: PointerAction) => void,
+    private readonly smoothing: () => number,
+  ) {}
 
   update(now: number) {
     // A delayed paint gets the same travel budget as a normal frame.
     const elapsed = Math.min(now - (this.frameAt ?? now), displayFrameMs)
     this.frameAt = now
     const target = this.cameraTarget
-    if (!target || !this.position || elapsed <= 0) return
+    if (!this.position || elapsed <= 0) return
+    if (!target) {
+      if (!this.paintProgress) return
+      this.paintProgress = false
+      this.send({ position: this.position, type: 'move', pressed: this.pressed, pinchProgress: this.pinchProgress })
+      return
+    }
     const dx = target.x - this.position.x
     const dy = target.y - this.position.y
     const distance = Math.hypot(dx, dy)
@@ -60,10 +95,11 @@ export class InputManager {
       y: this.position.y + dy * fraction,
     }
     if (fraction === 1) this.cameraTarget = undefined
-    this.send({ position: this.position, type: 'move', pressed: this.pressed })
+    this.paintProgress = false
+    this.send({ position: this.position, type: 'move', pressed: this.pressed, pinchProgress: this.pinchProgress })
   }
 
-  private accept(sample: InputSample) {
+  accept(sample: InputSample) {
     const { gesture } = sample
     if (gesture === 'lost') {
       const timeout = sample.trackingTimeout
@@ -73,6 +109,8 @@ export class InputManager {
         this.resumeUntil = undefined
       }
       this.pressed = false
+      this.pinchProgress = 0
+      this.paintProgress = false
       this.pinchAnchor = undefined
       this.cameraTarget = undefined
       this.lastCameraPoint = undefined
@@ -89,6 +127,9 @@ export class InputManager {
       this.resumeUntil = undefined
     }
     const pressed = gesture === 'pinch'
+    const progress = sample.pinchProgress ?? Number(pressed)
+    this.paintProgress = progress !== this.pinchProgress
+    this.pinchProgress = progress
     const changed = pressed !== this.pressed
     const camera = sampledAt !== undefined
     if (camera && changed && pressed && this.position) {
@@ -139,7 +180,7 @@ export class InputManager {
     if (changed && gesture === 'hover') {
       this.send({ position: this.position, type: 'cancel', pressed: false })
     } else {
-      this.send({ position: this.position, type: changed ? (pressed ? 'grab' : 'release') : 'move', pressed })
+      this.send({ position: this.position, type: changed ? (pressed ? 'grab' : 'release') : 'move', pressed, pinchProgress: this.pinchProgress })
     }
   }
 

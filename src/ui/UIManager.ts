@@ -1,5 +1,5 @@
-import { arena, cabinet, settingsSchema, type LidSide, type Settings } from '../core/config'
-import type { Point } from '../input/InputManager'
+import { arena, cabinet, hatchInset, hatchThickness, settingsSchema, type LidSide, type Settings } from '../core/config'
+import type { Point, PointerId } from '../input/InputManager'
 import type { HandCalibration } from '../input/GestureFilter'
 import type { HandStatus } from '../input/HandTracking'
 import type { CameraDevice } from '../input/CameraCapture'
@@ -40,13 +40,11 @@ export class UIManager {
   readonly cabinetArt = element('cabinet-art')
   readonly camera: ExhibitCamera
   readonly gallery = element('poster-viewport')
-  private readonly back = element<HTMLButtonElement>('back')
   private readonly enterMachine = element<HTMLButtonElement>('enter-machine')
-  private readonly enterWall = element<HTMLButtonElement>('enter-wall')
+  private readonly wallEdges = this.surface.querySelectorAll<HTMLButtonElement>('.wall-edge')
   private readonly instructions = element<HTMLDialogElement>('instructions')
   private readonly commands = element('machine-commands')
-  private wallScroll = 0
-  private wallOpen = false
+  private readonly cabinetFace = document.querySelector<SVGPathElement>('#cabinet-face')!
   private toastTimer?: number
   readonly take = element<HTMLButtonElement>('take')
   private readonly printSlot = element('print-slot')
@@ -60,16 +58,19 @@ export class UIManager {
   private readonly closeCard = element<HTMLButtonElement>('close-card')
   private readonly posterMessage = element('poster-message')
   private readonly download = element<HTMLAnchorElement>('save-card')
-  private readonly cursor = element('cursor')
+  private readonly cursors = new Map<PointerId, HTMLElement>([
+    ['hand-0', element('cursor')], ['hand-1', element('cursor-secondary')],
+  ])
   private readonly cameraToggle = element<HTMLButtonElement>('camera-toggle')
   private readonly cameraStatus = element('camera-status')
   private readonly handStatus = element('hand-status')
   private readonly handReconnect = element<HTMLButtonElement>('hand-reconnect')
   private readonly handDevice = element<HTMLSelectElement>('hand-device')
   private readonly notice = element('notice')
-  private hoveredControl?: HTMLElement
-  private lastButtonAim?: { control: HTMLElement; time: number }
+  private readonly hoveredControls = new Map<PointerId, HTMLElement>()
+  private readonly lastButtonAim = new Map<PointerId, { control: HTMLElement; time: number }>()
   private cardUrl?: string
+  private printing = false
 
   constructor(
     settings: Settings,
@@ -82,6 +83,7 @@ export class UIManager {
     onClosePoster: () => void,
     onPinPoster: () => void,
     onReroll: () => void,
+    resizeRoom: (left: number, right: number, top: number) => void,
   ) {
     for (const type of ['contextmenu', 'selectstart', 'dragstart']) {
       this.surface.addEventListener(type, event => {
@@ -95,13 +97,20 @@ export class UIManager {
     this.cabinetArt.style.setProperty('--tray-left', cabinet.tray.x + 'px')
     this.cabinetArt.style.setProperty('--tray-width', cabinet.tray.width + 'px')
     this.cabinetArt.style.setProperty('--tray-height', cabinet.tray.height + 'px')
-    this.camera = new ExhibitCamera(this.surface, element('fit'), element('world'), () => {
+    this.cabinetArt.style.setProperty('--hatch-inset', hatchInset + 'px')
+    this.cabinetArt.style.setProperty('--hatch-thickness', hatchThickness + 'px')
+    this.camera = new ExhibitCamera(this.surface, element('world'), () => {
       if (this.camera.locked) onNavigate()
       this.updateView()
-    })
+    }, resizeRoom)
     this.enterMachine.addEventListener('click', () => void this.camera.go('machine'))
-    this.enterWall.addEventListener('click', () => void this.camera.go('wall'))
-    this.back.addEventListener('click', () => void this.camera.go('overview'))
+    for (const edge of this.wallEdges) edge.addEventListener('click', () => void this.camera.go('overview'))
+    this.surface.addEventListener('keydown', event => {
+      if (event.key === 'Escape' && !this.modalOpen && !this.printing && this.camera.view !== 'overview') {
+        void this.camera.go('overview')
+      }
+    })
+    this.createPosterRays()
     this.lever = new CapsuleLever(element<HTMLButtonElement>('draw'), onShake)
     this.take.addEventListener('click', onTake)
     this.closeCard.addEventListener('click', () => this.souvenir.close())
@@ -111,6 +120,12 @@ export class UIManager {
     this.souvenir.addEventListener('cancel', event => {
       if (this.closeCard.disabled) event.preventDefault()
     })
+    this.souvenir.addEventListener('click', event => {
+      if (event.target !== this.souvenir || this.download.hidden || this.closeCard.disabled) return
+      const bounds = this.souvenir.getBoundingClientRect()
+      if (event.clientX < bounds.left || event.clientX > bounds.right ||
+        event.clientY < bounds.top || event.clientY > bounds.bottom) this.souvenir.close()
+    })
     element('help').addEventListener('click', () => {
       onNavigate()
       onHelp()
@@ -119,12 +134,13 @@ export class UIManager {
     element('close-help').addEventListener('click', () => this.instructions.close())
     for (const dialog of [this.souvenir, this.instructions]) {
       dialog.addEventListener('close', () => {
-        this.surface.append(this.cursor)
+        this.surface.append(...this.cursors.values())
         this.cancelCursor()
       })
     }
     this.souvenir.addEventListener('close', () => {
       this.editor.close()
+      delete this.souvenir.dataset.freshPrint
       onClosePoster()
       if (this.cardUrl) URL.revokeObjectURL(this.cardUrl)
       this.cardUrl = undefined
@@ -166,17 +182,9 @@ export class UIManager {
   private updateView() {
     const { view, locked } = this.camera
     this.commands.inert = locked || view !== 'machine'
-    const wallOpen = !locked && view === 'wall'
-    if (this.wallOpen && view !== 'wall') {
-      this.wallScroll = this.gallery.scrollTop
-      this.gallery.scrollTop = 0
-    }
-    this.gallery.inert = !wallOpen
-    if (!this.wallOpen && wallOpen) this.gallery.scrollTop = this.wallScroll
-    this.wallOpen = wallOpen
-    this.back.hidden = view === 'overview'
-    this.back.disabled = locked
-    this.enterMachine.hidden = this.enterWall.hidden = view !== 'overview' || locked
+    this.gallery.inert = locked || view === 'machine'
+    this.enterMachine.hidden = view !== 'overview' || locked
+    for (const edge of this.wallEdges) edge.disabled = view !== 'wall' || locked
   }
 
   get modalOpen() {
@@ -202,8 +210,28 @@ export class UIManager {
   private open(dialog: HTMLDialogElement) {
     if (dialog.open) return
     dialog.showModal()
-    dialog.append(this.cursor)
+    dialog.append(...this.cursors.values())
     this.cancelCursor()
+  }
+
+  private createPosterRays() {
+    const layer = element('poster-rays')
+    const rays = [
+      [12, 0, -121], [32, 0, -103], [64, 0, -80], [87, 0, -52],
+      [100, 12, -29], [100, 34, -12], [100, 56, 8], [100, 79, 22], [100, 94, 42],
+      [91, 100, 54], [63, 100, 82], [33, 100, 101], [7, 100, 133],
+      [0, 84, 157], [0, 63, 173], [0, 40, 189], [0, 18, 207],
+    ]
+    rays.forEach(([x, y, angle], index) => {
+      const ray = document.createElement('i')
+      ray.className = 'poster-ray'
+      ray.style.left = x + '%'
+      ray.style.top = y + '%'
+      ray.style.setProperty('--ray-angle', angle + 'deg')
+      ray.style.setProperty('--ray-duration', 2900 + (index * 137) % 1350 + 'ms')
+      ray.style.setProperty('--ray-phase', -(index * 631 % 3750) + 'ms')
+      layer.append(ray)
+    })
   }
 
   showEditor(poster: Poster) {
@@ -212,18 +240,19 @@ export class UIManager {
     this.pinCard.hidden = true
     this.confirm.hidden = false
     this.reroll.hidden = false
+    this.souvenir.dataset.freshPrint = ''
     this.setPosterStatus(false)
     this.open(this.souvenir)
   }
 
   async print(poster: Poster) {
     const operator = this.surface.querySelector<HTMLElement>('.operator-controls')!
-    this.back.disabled = true
+    this.printing = true
     operator.inert = true
     try {
       await printPoster(this.printSlot, poster)
     } finally {
-      this.back.disabled = false
+      this.printing = false
       operator.inert = false
     }
   }
@@ -244,6 +273,7 @@ export class UIManager {
     this.confirm.hidden = true
     this.reroll.hidden = true
     this.pinCard.hidden = !canPin
+    this.souvenir.toggleAttribute('data-fresh-print', canPin)
     if (this.cardUrl) URL.revokeObjectURL(this.cardUrl)
     this.cardUrl = URL.createObjectURL(blob)
     this.download.hidden = false
@@ -322,7 +352,6 @@ export class UIManager {
   }
 
   setCameraMode(enabled: boolean, error = '') {
-    this.cursor.classList.toggle('hand-cursor', enabled)
     this.cameraToggle.setAttribute('aria-pressed', String(enabled))
     const cameraAction = enabled ? '切回鼠标' : '启用摄像头'
     this.cameraToggle.setAttribute('aria-label', cameraAction)
@@ -352,7 +381,12 @@ export class UIManager {
     video?.setAttribute('aria-label', '本地摄像头画面')
   }
 
-  locate(position: Point, handAction?: 'aim' | 'activate') {
+  private onCabinetFace(x: number, y: number) {
+    const transform = this.cabinetFace.getScreenCTM()
+    return !!transform && this.cabinetFace.isPointInFill(new DOMPoint(x, y).matrixTransform(transform.inverse()))
+  }
+
+  locate(position: Point, handAction?: 'aim' | 'activate', pointer: PointerId = 'mouse') {
     const surface = this.inputBounds()
     const x = surface.left + position.x * surface.width
     const y = surface.top + position.y * surface.height
@@ -365,13 +399,21 @@ export class UIManager {
     const target = hit?.closest<HTMLElement>('#lid, #draw, [data-hand]') ?? undefined
     let control = target?.matches(':disabled') ? undefined : target
     const inside = !this.modalOpen && !this.camera.locked && this.camera.view !== 'wall' &&
-      !!hit && this.surface.contains(hit) && !hit.closest('.operator-controls, #back')
-    const insideGallery = !this.camera.locked && this.camera.view === 'wall' && !!hit && this.gallery.contains(hit)
+      !!hit && this.surface.contains(hit) && !hit.closest('.operator-controls')
+    const insideGallery = !this.modalOpen && !this.camera.locked && this.camera.view === 'wall' &&
+      !!hit && this.gallery.contains(hit) && !hit.closest('[data-poster]')
+    const machineBackdrop = inside && this.camera.view === 'machine' &&
+      !hit.closest('#lid, #draw, #take, #playfield, #collector') && !this.onCabinetFace(x, y)
+    const posterBackdrop = this.souvenir.open && !this.download.hidden && !this.closeCard.disabled && hit === this.souvenir &&
+      (() => {
+        const bounds = this.souvenir.getBoundingClientRect()
+        return x < bounds.left || x > bounds.right || y < bounds.top || y > bounds.bottom
+      })()
     const now = performance.now()
-    if (handAction === 'aim' && control) this.lastButtonAim = { control, time: now }
+    if (handAction === 'aim' && control) this.lastButtonAim.set(pointer, { control, time: now })
     if (handAction === 'activate') {
-      const aim = this.lastButtonAim
-      this.lastButtonAim = undefined
+      const aim = this.lastButtonAim.get(pointer)
+      this.lastButtonAim.delete(pointer)
       if (!control && aim && now - aim.time <= buttonGraceMs && !aim.control.matches(':disabled') && !aim.control.hidden && !aim.control.closest('[inert]')) {
         const bounds = aim.control.getBoundingClientRect()
         const dx = Math.max(bounds.left - x, x - bounds.right, 0)
@@ -380,38 +422,43 @@ export class UIManager {
       }
     }
     const sticker = hit?.closest<HTMLElement>('[data-sticker]') ?? undefined
-    return { point, inside, control, screen: { x, y }, sticker, insideGallery }
+    return { point, inside, control, screen: { x, y }, sticker, insideGallery, machineBackdrop, posterBackdrop }
   }
 
-  cancelCursor(point?: Point) {
-    this.lastButtonAim = undefined
-    this.showCursor(point)
-  }
-
-  showCursor(point?: Point, pressed = false, control?: HTMLElement) {
-    if (this.hoveredControl !== control) {
-      this.hoveredControl?.removeAttribute('data-gesture-hover')
-      this.hoveredControl = control ?? undefined
-      this.hoveredControl?.setAttribute('data-gesture-hover', '')
+  cancelCursor(pointer?: PointerId, point?: Point) {
+    for (const id of pointer ? [pointer] : this.cursors.keys()) {
+      this.lastButtonAim.delete(id)
+      this.showCursor(id, point)
     }
-    this.cursor.hidden = !point
+  }
+
+  showCursor(pointer: PointerId, point?: Point, pressed = false, control?: HTMLElement, progress = 0) {
+    const cursor = this.cursors.get(pointer)
+    if (!cursor) return
+    const previous = this.hoveredControls.get(pointer)
+    if (previous !== control) {
+      this.hoveredControls.delete(pointer)
+      if (previous && ![...this.hoveredControls.values()].includes(previous)) previous.removeAttribute('data-gesture-hover')
+      if (control) {
+        this.hoveredControls.set(pointer, control)
+        control.setAttribute('data-gesture-hover', '')
+      }
+    }
+    cursor.hidden = !point
     if (!point) {
-      this.lastButtonAim = undefined
+      this.lastButtonAim.delete(pointer)
       return
     }
-    if (this.modalOpen) {
-      this.cursor.style.left = point.x * innerWidth + 'px'
-      this.cursor.style.top = point.y * innerHeight + 'px'
-    } else {
-      this.cursor.style.left = point.x * 100 + '%'
-      this.cursor.style.top = point.y * 100 + '%'
-    }
-    this.cursor.classList.toggle('pressed', pressed)
+    cursor.style.left = point.x * 100 + '%'
+    cursor.style.top = point.y * 100 + '%'
+    cursor.style.setProperty('--pinch-scale', String(1 - 0.56 * (pressed ? 1 : progress)))
+    cursor.classList.toggle('pressed', pressed)
   }
 
-  update(shaking: boolean, retained: number, exporting: boolean) {
+  update(shaking: boolean, retained: number, exporting: boolean, hatchOpen: boolean, hatchProgress: number) {
     this.cabinetArt.toggleAttribute('data-shaking', shaking)
-    this.gate.toggleAttribute('data-open', shaking)
+    this.gate.toggleAttribute('data-open', hatchOpen)
+    this.gate.style.setProperty('--gate-progress', String(hatchProgress))
     this.lever.button.disabled = shaking
     this.take.disabled = shaking || exporting || retained === 0
   }

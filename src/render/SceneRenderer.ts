@@ -6,7 +6,7 @@ import { portrait } from '../capsule/PosterLayout'
 
 const feedbackColors = { grow: 0xffc326, sleep: 0x3886c4, dash: 0xffbf15, soothe: 0xff5545, brighten: 0xf5b422, chase: 0x5ba942 }
 
-type Visual = { root: HTMLDivElement; image: HTMLImageElement; badge?: HTMLImageElement }
+type Visual = { root: HTMLDivElement; image: HTMLImageElement }
 
 export class SceneRenderer {
   private readonly app = new Application()
@@ -33,11 +33,12 @@ export class SceneRenderer {
     host.append(layer)
   }
 
-  render(entities: Iterable<EmojiEntity>, heldId?: number) {
+  render(entities: Iterable<EmojiEntity>, heldIds: ReadonlySet<number>) {
     const graphics = this.graphics.clear()
     const visible = new Set<number>()
     for (const entity of entities) {
       const { body, radius, reaction } = entity
+      const held = heldIds.has(body.id)
       visible.add(body.id)
       let visual = this.visuals.get(body.id)
       const art = portrait(entity.kind, entity.reactionCounts)
@@ -59,10 +60,6 @@ export class SceneRenderer {
         visual.image.replaceWith(image)
         visual.image = image
       }
-      if (art.badge && !visual.badge) {
-        visual.badge = emojiImage(art.badge, 'scene-badge')
-        visual.root.append(visual.badge)
-      }
       const x = body.position.x + cabinet.chamber.x
       const y = body.position.y + cabinet.chamber.y
       const progress = reaction ? reaction.elapsed / reaction.duration : 1
@@ -71,16 +68,19 @@ export class SceneRenderer {
       const size = radius / arena.radius * (1 + pulse * 0.11 + entry * 0.09)
       visual.root.style.transform = 'translate(' + x + 'px,' + y + 'px) rotate(' + (body.angle + art.tilt + pulse * 0.12) + 'rad) scale(' + size + ')'
       visual.root.toggleAttribute('data-retained', !!entity.retained)
+      visual.root.toggleAttribute('data-held', held)
       visual.root.toggleAttribute('data-outside', !entity.retained &&
         (body.position.x < 0 || body.position.x > arena.width || body.position.y < roofY))
       const floorGap = groundY - body.position.y - radius
-      if (!entity.retained && heldId !== body.id && floorGap < 38 &&
-        (body.position.x < 0 || body.position.x > arena.width)) {
+      const outsideOnFloor = !entity.retained && !held && floorGap < 38 &&
+        (body.position.x < 0 || body.position.x > arena.width)
+      visual.root.toggleAttribute('data-on-ground', outsideOnFloor)
+      if (outsideOnFloor) {
         const contact = 1 - Math.max(0, floorGap) / 38
         graphics.ellipse(x, groundY + cabinet.chamber.y + 1, radius * (0.57 + contact * 0.22), 2.6)
           .fill({ color: 0x35536d, alpha: 0.2 * contact })
       }
-      if (reaction || heldId === body.id) {
+      if (reaction || held) {
         graphics.circle(x, y, radius + 4 + (reaction ? progress * 12 : 0))
           .stroke({ color: reaction ? feedbackColors[reaction.effect] : 0x101012, width: 2.5, alpha: reaction ? 1 - progress : 0.8 })
       }

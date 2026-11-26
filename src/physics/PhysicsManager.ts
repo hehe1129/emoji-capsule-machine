@@ -1,5 +1,5 @@
 import Matter from 'matter-js'
-import { arena, cabinet, groundY, hatchEnd, hatchX, lid, roofY, room, type LidSide, type Settings } from '../core/config'
+import { arena, cabinet, groundY, hatchEnd, hatchMotionMs, hatchThickness, hatchX, lid, roofY, room, trayEnd, trayX, type LidSide, type Settings } from '../core/config'
 import type { Point } from '../input/InputManager'
 
 const { Bodies, Body, Composite, Engine, Events, Query, Vertices } = Matter
@@ -11,15 +11,8 @@ const followTimeMs = 45
 const roomTop = -240
 const trayBottom = arena.height + cabinet.tray.height
 const wall = { isStatic: true, friction: 0.05 }
-// The return grate becomes solid for each body after it crosses the threshold.
-const shutterCategory = 2
-const returnCategory = 4
-const normalMask = 0xffffffff & ~returnCategory
-
-function gate(category: number) {
-  return Bodies.rectangle((hatchX + hatchEnd) / 2, arena.height + 3, hatchEnd - hatchX, 6,
-    { ...wall, collisionFilter: { category, mask: 1, group: 0 } })
-}
+const gateWidth = hatchEnd - hatchX
+const gateY = arena.height + hatchThickness / 2
 
 function segment(a: Point, b: Point, thickness = 12) {
   return Bodies.rectangle((a.x + b.x) / 2, (a.y + b.y) / 2,
@@ -37,10 +30,16 @@ const capCenter = Vertices.centre(capOutline as Matter.Vector[])
 export class PhysicsManager {
   private readonly engine = Engine.create({ positionIterations: 8 })
   private readonly collisions: [Matter.Body, Matter.Body][] = []
-  private readonly hatch = gate(shutterCategory)
-  private hatchOpen = false
+  private readonly hatch = Bodies.rectangle((hatchX + hatchEnd) / 2, gateY, gateWidth, hatchThickness, wall)
+  private hatchTravel = 0
+  hatchProgress = 0
   private readonly roof = Bodies.fromVertices(capCenter.x, capCenter.y, [capOutline], wall)
   private readonly dragObstacles: Matter.Body[]
+  private readonly roomSides = [room.left, room.right].map(x =>
+    Bodies.rectangle(x, 0, 20, 100, wall))
+  private readonly ground = Bodies.rectangle(0, groundY + 20, 100, 40, { ...wall, friction: 0.16 })
+  private readonly ceiling = Bodies.rectangle(0, roomTop - 10, 100, 20, wall)
+  private roomBounds = { left: 0, right: 0, top: roomTop }
   lidSide?: LidSide
 
   constructor() {
@@ -51,23 +50,20 @@ export class PhysicsManager {
       Bodies.rectangle((hatchEnd + width) / 2, height + thickness / 2, width - hatchEnd, thickness, wall),
       Bodies.rectangle(-6, (height + roofY) / 2, 12, height - roofY, wall),
       Bodies.rectangle(width + 6, (height + roofY) / 2, 12, height - roofY, wall),
-      Bodies.rectangle(hatchX - thickness / 2, height + cabinet.tray.height / 2, thickness, cabinet.tray.height, wall),
-      Bodies.rectangle(hatchEnd + thickness / 2, height + cabinet.tray.height / 2, thickness, cabinet.tray.height, wall),
-      Bodies.rectangle((hatchX + hatchEnd) / 2, trayBottom + thickness / 2, hatchEnd - hatchX + thickness, thickness, wall),
+      Bodies.rectangle(trayX - thickness / 2, height + cabinet.tray.height / 2, thickness, cabinet.tray.height, wall),
+      Bodies.rectangle(trayEnd + thickness / 2, height + cabinet.tray.height / 2, thickness, cabinet.tray.height, wall),
+      Bodies.rectangle((trayX + trayEnd) / 2, trayBottom + thickness / 2, trayEnd - trayX + thickness, thickness, wall),
       this.hatch,
-      gate(returnCategory),
       segment({ x: -2, y: height - 4 }, { x: -50, y: groundY - 52 }),
       segment({ x: width + 2, y: height - 4 }, { x: width + 50, y: groundY - 52 }),
       segment({ x: -50, y: groundY - 53 }, { x: -50, y: groundY }),
       segment({ x: width + 50, y: groundY - 53 }, { x: width + 50, y: groundY }),
-      Bodies.rectangle((room.left + room.right) / 2, groundY + 20, room.right - room.left + 60, 40, { ...wall, friction: 0.16 }),
-      Bodies.rectangle(room.left - 10, (groundY + roomTop) / 2, 20, groundY - roomTop + 40, wall),
-      Bodies.rectangle(room.right + 10, (groundY + roomTop) / 2, 20, groundY - roomTop + 40, wall),
-      Bodies.rectangle((room.left + room.right) / 2, roomTop - 10, room.right - room.left, 20, wall),
+      this.ground, this.ceiling, ...this.roomSides,
       this.roof,
     ]
     this.dragObstacles = boundaries
     Composite.add(this.engine.world, boundaries)
+    this.resizeRoom(room.left, room.right)
     Events.on(this.engine, 'collisionStart', ({ pairs }) => {
       for (const { bodyA, bodyB } of pairs) {
         // Held Emoji are static while the pointer drives them, but can still collide.
@@ -77,8 +73,25 @@ export class PhysicsManager {
     })
   }
 
+  resizeRoom(left: number, right: number, top = roomTop) {
+    top = Math.min(top, roomTop)
+    if (this.roomBounds.left === left && this.roomBounds.right === right && this.roomBounds.top === top) return
+    this.roomBounds = { left, right, top }
+    const wallY = (groundY + top) / 2
+    for (const [index, side] of this.roomSides.entries()) {
+      Body.scale(side, 1, (groundY - top + 40) / (side.bounds.max.y - side.bounds.min.y))
+      Body.setPosition(side, { x: index === 0 ? left - 10 : right + 10, y: wallY })
+    }
+    Body.setPosition(this.ceiling, { x: this.ceiling.position.x, y: top - 10 })
+    for (const boundary of [this.ground, this.ceiling]) {
+      const width = boundary.bounds.max.x - boundary.bounds.min.x
+      Body.scale(boundary, (right - left + 60) / width, 1)
+      Body.setPosition(boundary, { x: (left + right) / 2, y: boundary.position.y })
+    }
+  }
+
   create(position: Point, settings: Settings) {
-    const body = Bodies.circle(position.x, position.y, arena.radius, { frictionAir: 0.013, collisionFilter: { category: 1, mask: normalMask, group: 0 } })
+    const body = Bodies.circle(position.x, position.y, arena.radius, { frictionAir: 0.013 })
     this.tune(body, settings)
     Composite.add(this.engine.world, body)
     return body
@@ -151,7 +164,6 @@ export class PhysicsManager {
     Body.setVelocity(body, { x: 0, y: 0 })
     Body.setAngularVelocity(body, 0)
     Body.setStatic(body, held)
-    body.collisionFilter.mask = normalMask
   }
 
   grow(body: Matter.Body, factor: number) {
@@ -176,19 +188,22 @@ export class PhysicsManager {
     Body.setVelocity(body, { x: 20 * direction, y: -7 })
   }
 
-  setHatch(open: boolean) {
-    if (open === this.hatchOpen) return
-    this.hatchOpen = open
-    if (open) Composite.remove(this.engine.world, this.hatch)
-    else Composite.add(this.engine.world, this.hatch)
-  }
-
-  finishPassage(body: Matter.Body) {
-    body.collisionFilter.mask = normalMask & ~shutterCategory
-  }
-
-  retain(body: Matter.Body) {
-    body.collisionFilter.mask = 0xffffffff
+  moveHatch(open: boolean, pieces: Iterable<{ body: Matter.Body; radius: number }>) {
+    const target = open ? 1 : 0
+    if (this.hatchTravel === target) return
+    this.hatchTravel = open ? Math.min(1, this.hatchTravel + physicsStep / hatchMotionMs)
+      : Math.max(0, this.hatchTravel - physicsStep / hatchMotionMs)
+    const travel = this.hatchTravel
+    this.hatchProgress = travel ** 2 * (3 - 2 * travel)
+    Body.setPosition(this.hatch, { x: (hatchX + hatchEnd) / 2 - gateWidth * this.hatchProgress, y: gateY })
+    if (open) return
+    // Clear the thickness of the moving slab on the nearest side before the solver runs.
+    for (const { body, radius } of pieces) {
+      if (!Query.collides(body, [this.hatch]).length) continue
+      const side = body.position.y < gateY ? -1 : 1
+      Body.setPosition(body, { x: body.position.x, y: gateY + side * (hatchThickness / 2 + radius + 0.5) })
+      if (!body.isStatic) Body.setVelocity(body, { x: body.velocity.x, y: side * 1.8 })
+    }
   }
 
   chase(cat: Matter.Body, fish: Matter.Body) {
@@ -208,13 +223,13 @@ export class PhysicsManager {
   contain(body: Matter.Body, radius: number, retained: boolean) {
     const point = body.position
     if (![point.x, point.y, body.angle, body.velocity.x, body.velocity.y].every(Number.isFinite)) return 'invalid'
-    const left = retained ? hatchX : room.left
-    const right = retained ? hatchEnd : room.right
-    const top = retained ? arena.height : roomTop
+    const left = retained ? trayX : this.roomBounds.left
+    const right = retained ? trayEnd : this.roomBounds.right
+    const top = retained ? arena.height - 20 : this.roomBounds.top
     if (point.x < left - radius || point.x > right + radius || point.y < top - radius || point.y > (retained ? trayBottom : groundY) + radius) {
       Body.setPosition(body, {
         x: Math.min(right - radius, Math.max(left + radius, point.x)),
-        y: retained ? trayBottom - radius - 2 : Math.min(groundY - radius - 2, Math.max(roomTop + radius + 2, point.y)),
+        y: retained ? trayBottom - radius - 2 : Math.min(groundY - radius - 2, Math.max(top + radius + 2, point.y)),
       })
       Body.setVelocity(body, { x: 0, y: 0 })
       Body.setAngularVelocity(body, 0)

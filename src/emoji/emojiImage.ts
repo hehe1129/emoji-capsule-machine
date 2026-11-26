@@ -1,9 +1,8 @@
 import type { EmojiKind } from './catalog'
-export type EmojiArtwork = EmojiKind | 'soothed' | 'delighted'
+export type EmojiArtwork = EmojiKind
 
 export function emojiImageUrl(kind: EmojiArtwork) {
-  const directory = kind === 'soothed' || kind === 'delighted' ? 'original-emoji-states/' : 'original-emoji/'
-  return import.meta.env.BASE_URL + directory + kind + '.png'
+  return import.meta.env.BASE_URL + 'pixel-emoji/' + kind + '.png'
 }
 
 export function emojiImage(kind: EmojiArtwork, className: string) {

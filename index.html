@@ -9,16 +9,24 @@
   <title>扭蛋黄</title>
 </head>
 <body>
-<main id="machine" class="surface" aria-label="扭蛋黄展览">
+<main id="machine" class="surface" data-view="overview" aria-label="扭蛋黄展览">
+  <div class="room" aria-hidden="true"><div class="floor"></div></div>
+  <section class="poster-wall" aria-label="海报墙">
+    <div class="poster-viewport" id="poster-viewport"><div class="poster-grid"></div></div>
+  </section>
+  <button class="wall-edge wall-edge-left" type="button" data-native data-hand aria-label="退出海报墙放大视角（左）" disabled></button>
+  <button class="wall-edge wall-edge-right" type="button" data-native data-hand aria-label="退出海报墙放大视角（右）" disabled></button>
+  <button class="wall-edge wall-edge-top" type="button" data-native data-hand aria-label="退出海报墙放大视角（上）" disabled></button>
+  <button class="wall-edge wall-edge-bottom" type="button" data-native data-hand aria-label="退出海报墙放大视角（下）" disabled></button>
   <div class="fit" id="fit">
     <div class="world" id="world" data-view="overview">
-      <div class="room" aria-hidden="true"><div class="floor"></div><div class="ground-shadow"></div></div>
+      <div class="ground-shadow" aria-hidden="true"></div>
       <section class="cabinet" id="cabinet" aria-label="红色扭蛋机">
         <div class="cabinet-art" id="cabinet-art">
           <svg class="cabinet-shell" viewBox="0 0 560 780" aria-hidden="true">
             <path fill="#d2e9f2" d="M60 115H500V153H60Z"/>
             <path fill="none" stroke="#111113" stroke-width="12" d="M60 115V533M500 115V533"/>
-            <path fill="#ff2f27" stroke="#111113" stroke-width="13" stroke-linejoin="round"
+            <path id="cabinet-face" fill="#ff2f27" stroke="#111113" stroke-width="13" stroke-linejoin="round"
               d="M60 513H500L550 726V761Q550 774 537 774H23Q10 774 10 761V726Z"/>
             <path fill="none" stroke="#111113" stroke-width="7" d="M10 731H550"/>
             <path fill="#e62b25" d="M17 735H543V760Q543 767 537 767H23Q17 767 17 760Z"/>
@@ -27,6 +35,7 @@
           <div id="collector" class="collector" role="group" aria-label="滞留区"></div>
           <div class="chamber-floor" aria-hidden="true"></div>
           <div id="retention-gate" class="retention-gate" aria-hidden="true"></div>
+          <div class="tray-cover" aria-hidden="true"></div>
           <div id="tray-trim" class="tray-trim" aria-hidden="true"></div>
           <div id="machine-commands" class="machine-commands" inert>
             <button id="lid" class="lid-hit" type="button" aria-label="按住顶盖投放" title="按住顶盖投放" aria-pressed="false">
@@ -38,7 +47,7 @@
               </svg>
             </button>
             <button id="draw" class="lever" type="button" aria-keyshortcuts="ArrowDown" aria-label="下拉摇杆" title="下拉摇杆">
-              <span class="lever-track" aria-hidden="true"><span class="lever-base"></span><span class="lever-arm"><span class="lever-knob"></span></span></span>
+              <span class="lever-track" aria-hidden="true"><span class="lever-base"></span><span class="lever-shaft"></span><span class="lever-arm"><span class="lever-knob"></span></span></span>
             </button>
             <button id="take" class="take" type="button" data-native data-hand aria-label="带走!" disabled>
               <img src="%BASE_URL%art/take-dots.svg" alt="" draggable="false">
@@ -48,15 +57,8 @@
         </div>
         <button id="enter-machine" class="scene-entry" type="button" data-native data-hand aria-label="进入扭蛋机"></button>
       </section>
-      <section class="poster-wall" id="poster-wall" aria-label="海报墙">
-        <div class="poster-viewport" id="poster-viewport" tabindex="0" inert><div class="poster-grid"></div></div>
-        <button id="enter-wall" class="scene-entry" type="button" data-native data-hand aria-label="进入海报墙"></button>
-      </section>
     </div>
   </div>
-  <button id="back" class="icon-button back" type="button" data-native data-hand aria-label="返回总览" title="返回总览" hidden>
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" aria-hidden="true"><path d="m12 5-7 7 7 7M5 12h14"/></svg>
-  </button>
   <div class="operator-controls" data-native>
     <button id="camera-toggle" class="icon-button" data-hand type="button" aria-label="启用摄像头" title="启用摄像头" aria-pressed="false" disabled>
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="5.5" width="18" height="13" rx="2"/><circle cx="12" cy="12" r="3"/></svg>
@@ -84,8 +86,12 @@
   <p id="camera-status" role="status" class="sr-only" hidden></p>
   <p id="notice" class="notice" role="status" hidden></p>
   <div id="cursor" class="cursor" aria-hidden="true" hidden></div>
+  <div id="cursor-secondary" class="cursor" aria-hidden="true" hidden></div>
   <dialog id="souvenir" aria-label="纪念海报">
-    <div id="poster-view" class="poster-view"></div>
+    <div class="poster-paper">
+      <div id="poster-rays" class="poster-rays" aria-hidden="true"></div>
+      <div id="poster-view" class="poster-view"></div>
+    </div>
     <div id="poster-colors" class="poster-colors" role="group" aria-label="海报底色" hidden></div>
     <p id="poster-message" class="poster-message" role="status" hidden></p>
     <div class="dialog-controls">
@@ -105,7 +111,7 @@
       <p>用鼠标或摄像头捏合选中扭蛋机和海报墙。</p>
       <p>按住顶盖投放 Emoji。把 Emoji 拖近顶盖，可以从开口拿出或放回。</p>
       <p>下拉摇杆抽取，点「带走!」生成海报，再下载或贴到墙上。</p>
-      <p>把光标移到海报墙上缘或下缘浏览。点选海报可以放大。</p>
+      <p>点海报进入墙面近景。按住中间的空白墙面拖动视角，点四周虚化区域返回。</p>
       <p id="archive-mode" role="status"></p>
     </div>
   </dialog>

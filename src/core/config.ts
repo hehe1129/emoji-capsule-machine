@@ -1,24 +1,31 @@
 export const exhibit = { width: 1920, height: 1080 } as const
 export const cabinet = {
-  x: 247, y: 145, width: 560, height: 780,
+  x: 680, y: 201, width: 560, height: 780,
   chamber: { x: 60, y: 152, width: 440, height: 370 },
-  tray: { x: 211, y: 522, width: 138, height: 149 },
+  tray: { x: 211, y: 522, width: 138, height: 171 },
 } as const
-export const posterWall = { x: 844, y: 54, width: 760, height: 728 } as const
 export type LidSide = 'left' | 'right'
 export const arena = { width: cabinet.chamber.width, height: cabinet.chamber.height, radius: 22 }
-export const machineCamera = { zoom: 1.52, focusY: 432 }
+export const machineCamera = { top: 78, framingWidth: 595, framingHeight: 670 }
 export const lid = { seam: 115, angle: 12 * Math.PI / 180 }
 export const room = {
   floor: cabinet.y + cabinet.height,
   left: -cabinet.x - cabinet.chamber.x + 3,
   right: exhibit.width - cabinet.x - cabinet.chamber.x - 3,
 }
+export const roomScale = (width: number, height: number) => Math.min(width / 1320, height / exhibit.height)
+export const roomBaseline = (height: number) => height * 0.87
+export const roomHorizon = (width: number, height: number) => roomBaseline(height) - 120 * roomScale(width, height)
 export const roofY = lid.seam - cabinet.chamber.y
-export const inletY = machineCamera.focusY - exhibit.height / (2 * machineCamera.zoom) - cabinet.chamber.y
+export const inletY = machineCamera.top - cabinet.chamber.y
 export const groundY = room.floor - cabinet.y - cabinet.chamber.y
-export const hatchX = cabinet.tray.x - cabinet.chamber.x
-export const hatchEnd = hatchX + cabinet.tray.width
+export const trayX = cabinet.tray.x - cabinet.chamber.x
+export const trayEnd = trayX + cabinet.tray.width
+export const hatchInset = cabinet.tray.width * (1 - 2 / 3 * 0.8) / 2
+export const hatchMotionMs = 260
+export const hatchX = trayX + hatchInset
+export const hatchEnd = trayEnd - hatchInset
+export const hatchThickness = 13
 export const dropInterval = 700
 export const shakeDuration = 3000
 

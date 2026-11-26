@@ -1,5 +1,6 @@
 import { GestureFilter, type HandCalibration } from './GestureFilter'
-import type { InputSample, InputSource } from './InputManager'
+import { handPointers, type InputSample, type InputSource } from './InputManager'
+import { associateHands, type SeenHand } from './HandAssociation'
 import type { createHandRecognizer } from './MediaPipeRecognizer'
 import type { CameraCapture } from './CameraCapture'
 
@@ -44,7 +45,9 @@ export class HandTracking implements InputSource {
   ) {}
 
   connect(emit: (sample: InputSample) => void) {
-    const filter = new GestureFilter()
+    const tracks = handPointers.map(pointer => ({
+      pointer, filter: new GestureFilter(), seen: undefined as SeenHand | undefined, pose: 'seeking' as PoseStatus,
+    }))
     const events = new AbortController()
     const video = document.createElement('video')
     video.defaultMuted = true
@@ -64,7 +67,6 @@ export class HandTracking implements InputSource {
     let lastFrameAt = 0
     let lastInference = -Infinity
     let modelState: 'idle' | 'loading' | 'ready' | 'model-error' | 'inference-error' = 'idle'
-    let pose: PoseStatus = 'seeking'
     let status: HandStatus | undefined
     let blurred = false
     const stopped = () => events.signal.aborted
@@ -75,10 +77,17 @@ export class HandTracking implements InputSource {
       this.onStatus(next)
     }
 
-    const publish = (sample?: InputSample) => {
+    const publish = (hand: typeof tracks[number], sample?: InputSample) => {
       if (!sample) return
-      emit(sample)
-      pose = sample.gesture === 'lost' ? 'seeking' : sample.gesture
+      emit({ ...sample, pointer: hand.pointer })
+      hand.pose = sample.gesture === 'lost' ? 'seeking' : sample.gesture
+    }
+
+    const reset = () => {
+      for (const hand of tracks) {
+        hand.seen = undefined
+        publish(hand, hand.filter.reset())
+      }
     }
 
     const closeRecognizer = () => {
@@ -95,7 +104,7 @@ export class HandTracking implements InputSource {
       if (stopped()) return
       events.abort()
       cancelAnimationFrame(frame)
-      emit(filter.reset())
+      reset()
       video.pause()
       video.srcObject = null
       this.onPreview()
@@ -145,7 +154,7 @@ export class HandTracking implements InputSource {
         return
       }
       if (!document.hidden && !blurred) {
-        publish(filter.expire(now))
+        for (const hand of tracks) publish(hand, hand.filter.expire(now))
         const freshFrame = !track.muted && !video.paused && video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA &&
           video.videoWidth > 0 && video.videoHeight > 0 && video.currentTime !== lastVideoTime
         if (freshFrame) {
@@ -157,10 +166,15 @@ export class HandTracking implements InputSource {
           if (recognizer && now - lastInference >= inferenceIntervalMs) {
             lastInference = now
             try {
-              publish(filter.observe(recognizer.observe(video, now), now, this.calibration()))
+              const observations = associateHands(recognizer.observe(video, now), tracks.map(hand => hand.seen), now)
+              for (const [index, hand] of tracks.entries()) {
+                const observation = observations[index]
+                if (observation) hand.seen = { ...observation, side: observation.side ?? hand.seen?.side, at: now }
+                publish(hand, hand.filter.observe(observation, now, this.calibration()))
+              }
             } catch (error) {
               console.warn('Hand recognition stopped:', error)
-              publish(filter.reset())
+              reset()
               closeRecognizer()
               modelState = 'inference-error'
             }
@@ -169,7 +183,9 @@ export class HandTracking implements InputSource {
         if (now - lastFrameAt >= frameTimeoutMs) report('no-frames')
         else if (darkSince !== undefined && now - darkSince >= frameTimeoutMs) report('dark-frames')
         else if (modelState === 'idle') report('starting')
-        else report(modelState === 'ready' ? pose : modelState)
+        else report(modelState === 'ready'
+          ? (['pinch', 'open', 'hover', 'seeking'] as const).find(pose => tracks.some(hand => hand.pose === pose)) ?? 'seeking'
+          : modelState)
       }
       frame = requestAnimationFrame(inspect)
     }
@@ -215,7 +231,7 @@ export class HandTracking implements InputSource {
         }, options)
         document.addEventListener('visibilitychange', () => {
           if (document.hidden) {
-            publish(filter.reset())
+            reset()
           } else {
             lastFrameAt = performance.now()
             darkSince = undefined
@@ -238,7 +254,7 @@ export class HandTracking implements InputSource {
     window.addEventListener('pagehide', stop, options)
     window.addEventListener('blur', () => {
       blurred = true
-      publish(filter.reset())
+      reset()
     }, options)
     window.addEventListener('focus', () => {
       blurred = false

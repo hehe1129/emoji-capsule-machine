@@ -1,19 +1,21 @@
-import { arena, hatchX, hatchEnd, inletY, roofY, shakeDuration, type LidSide, type Settings } from './config'
+import { arena, groundY, hatchThickness, inletY, roofY, shakeDuration, trayX, trayEnd, type LidSide, type Settings } from './config'
 import { PhysicsManager, physicsStep } from '../physics/PhysicsManager'
 import { ReactionEngine } from '../reactions/ReactionEngine'
 import type { EmojiEntity } from '../emoji/EmojiEntity'
 import { randomKind } from '../emoji/catalog'
-import type { Point } from '../input/InputManager'
+import type { Point, PointerId } from '../input/InputManager'
 import { captureCapsule, type CapsuleResult } from '../capsule/CapsuleResult'
 
 const throwSmoothing = 1 - Math.exp(-physicsStep / 30)
 const maxDragSpeed = 1.65 // scene units per millisecond
+type Held = { entity: EmojiEntity; offset: Point; target?: Point; smooth: boolean; previous: Point; velocity: Point }
 
 export class AppController {
   private readonly physics = new PhysicsManager()
   private readonly reactions = new ReactionEngine()
   private readonly objects = new Map<number, EmojiEntity>()
-  private held?: { entity: EmojiEntity; offset: Point; target?: Point; smooth: boolean; previous: Point; velocity: Point }
+  private readonly held = new Map<PointerId, Held>()
+  private readonly heldBodies = new Set<number>()
   private feedSide?: LidSide
   private dragSide?: LidSide
   private lidReleaseMs = 0
@@ -43,8 +45,20 @@ export class AppController {
     return count
   }
 
-  get heldId() {
-    return this.held?.entity.body.id
+  get heldIds(): ReadonlySet<number> {
+    return this.heldBodies
+  }
+
+  get hatchOpen() {
+    return this.shaking || [...this.held.values()].some(({ entity, target }) => {
+      const { x, y } = entity.body.position
+      return entity.retained && !!target && x >= trayX && x <= trayEnd &&
+        y < arena.height + entity.radius + 85 && target.y < arena.height + entity.radius + 25
+    })
+  }
+
+  get hatchProgress() {
+    return this.physics.hatchProgress
   }
 
   get shaking() {
@@ -55,18 +69,22 @@ export class AppController {
     return this.physics.lidSide
   }
 
+  resizeRoom(left: number, right: number, top?: number) {
+    this.physics.resizeRoom(left, right, top)
+  }
+
   setFeedLid(side?: LidSide) {
     this.feedSide = side
   }
 
   private updateLid() {
-    const position = this.held?.entity.body.position
-    const aim = this.held?.target
-    const near = position && aim && position.y < roofY + 83 && position.y > roofY - 145 &&
-      position.x > -115 && position.x < arena.width + 115 &&
-      aim.y < roofY + 65 && aim.y > roofY - 148
+    const near = [...this.held.values()].find(({ entity, target }) => {
+      const { x, y } = entity.body.position
+      return target && y < roofY + 83 && y > roofY - 145 && x > -115 && x < arena.width + 115 &&
+        target.y < roofY + 65 && target.y > roofY - 148
+    })
     this.lidReleaseMs = Math.max(0, this.lidReleaseMs - physicsStep)
-    if (near) this.dragSide ??= position.x <= arena.width / 2 ? 'left' : 'right'
+    if (near) this.dragSide ??= near.entity.body.position.x <= arena.width / 2 ? 'left' : 'right'
     else if (!this.lidReleaseMs) this.dragSide = undefined
     const side = this.arriving?.side ?? this.feedSide ?? this.dragSide
     if (side !== this.lidSide) this.physics.setLid(side, Array.from(this.entities, entity => entity.body))
@@ -115,60 +133,68 @@ export class AppController {
   }
 
   private remove(entity: EmojiEntity) {
-    if (this.heldId === entity.body.id) this.release()
+    for (const [pointer, held] of this.held) {
+      if (held.entity === entity) this.release(false, pointer)
+    }
     this.physics.remove(entity.body)
     this.objects.delete(entity.body.id)
   }
 
-  grab(point: Point, outsideOnly = false) {
-    if (this.held) return
+  grab(point: Point, outsideOnly = false, hideGround = false, pointer: PointerId = 'mouse') {
+    if (this.held.has(pointer)) return false
     let closest: EmojiEntity | undefined
     let minDistance = Infinity
     for (const entity of this.entities) {
       const { x, y } = entity.body.position
-      if (entity.retained || entity === this.arriving?.entity ||
-        (outsideOnly && x >= 0 && x <= arena.width && y >= roofY)) continue
+      const outside = x < 0 || x > arena.width
+      if (entity === this.arriving?.entity || this.heldBodies.has(entity.body.id) ||
+        (outsideOnly && (entity.retained || (!outside && y >= roofY))) ||
+        (hideGround && outside && groundY - y - entity.radius < 38)) continue
       const distance = Math.hypot(x - point.x, y - point.y)
       if (distance <= entity.radius + this.settings.grabRange && distance <= minDistance) {
         closest = entity
         minDistance = distance
       }
     }
-    if (!closest) return
+    if (!closest) return false
     const { x, y } = closest.body.position
-    this.held = {
+    this.held.set(pointer, {
       entity: closest,
       offset: { x: x - point.x, y: y - point.y },
       previous: { x, y }, smooth: false,
       velocity: { x: 0, y: 0 },
-    }
+    })
+    this.heldBodies.add(closest.body.id)
     this.physics.hold(closest.body, true)
+    return true
   }
 
-  drag(point: Point, smooth = false) {
-    if (!this.held) return
-    const { offset } = this.held
+  drag(point: Point, smooth = false, pointer: PointerId = 'mouse') {
+    const held = this.held.get(pointer)
+    if (!held) return
+    const { offset } = held
     const target = { x: point.x + offset.x, y: point.y + offset.y }
-    this.held.target = target
-    this.held.smooth = smooth
+    held.target = target
+    held.smooth = smooth
   }
 
-  release(throwHeld = false) {
-    if (!this.held) return
-    if (throwHeld) this.stepDrag()
-    const { entity: { body }, velocity } = this.held
+  release(throwHeld = false, pointer: PointerId = 'mouse') {
+    const held = this.held.get(pointer)
+    if (!held) return
+    if (throwHeld) this.stepDrag(held)
+    const { entity: { body }, velocity } = held
     this.physics.hold(body, false)
     this.physics.tune(body, this.settings)
     if (throwHeld) {
       this.physics.launch(body, velocity)
       if (this.dragSide) this.lidReleaseMs = 460
     }
-    this.held = undefined
+    this.held.delete(pointer)
+    this.heldBodies.delete(body.id)
   }
 
-  private stepDrag() {
-    if (!this.held) return
-    const { entity, target, smooth, previous, velocity } = this.held
+  private stepDrag(held: Held) {
+    const { entity, target, smooth, previous, velocity } = held
     if (target) this.physics.follow(entity.body, target, smooth)
     const { x, y } = entity.body.position
     const dx = x - previous.x
@@ -186,7 +212,6 @@ export class AppController {
     this.shakeStarted = now
     this.nextJolt = now
     this.notice = ''
-    this.physics.setHatch(true)
   }
 
   take(items: readonly CapsuleResult[]) {
@@ -210,13 +235,6 @@ export class AppController {
   tick(now: number, delta: number) {
     if (this.shakeStarted !== undefined && now - this.shakeStarted >= shakeDuration) {
       this.shakeStarted = undefined
-      for (const entity of this.entities) {
-        const { x, y } = entity.body.position
-        if (!entity.retained && x > hatchX && x < hatchEnd && y >= arena.height) {
-          this.physics.finishPassage(entity.body)
-        }
-      }
-      this.physics.setHatch(false)
     }
     const phase = this.shakeStarted === undefined ? undefined : (now - this.shakeStarted) / 53
     if (phase !== undefined && now >= this.nextJolt) {
@@ -231,7 +249,8 @@ export class AppController {
       this.accumulated -= physicsStep
       this.updateLid()
       this.advanceDrop()
-      this.stepDrag()
+      this.physics.moveHatch(this.hatchOpen, this.entities)
+      for (const held of this.held.values()) this.stepDrag(held)
       this.reactions.advance(this.entities, physicsStep, this.settings.reactionCooldown)
       for (const [bodyA, bodyB] of this.physics.step(this.settings.gravity, phase)) {
         const first = this.objects.get(bodyA.id)
@@ -259,10 +278,10 @@ export class AppController {
         const { body, radius } = entity
         entity.spawnRemaining = Math.max(0, entity.spawnRemaining - physicsStep)
         const { x, y } = body.position
-        if (!entity.retained && x >= hatchX && x <= hatchEnd && y - radius >= arena.height + 6) {
+        if (!entity.retained && x >= trayX && x <= trayEnd && y - radius >= arena.height + hatchThickness) {
           entity.retained = true
-          this.physics.retain(body)
         }
+        if (entity.retained && y + radius <= arena.height) entity.retained = false
         const state = this.physics.contain(body, radius, !!entity.retained)
         if (state === 'recovered') this.notice = '一个 Emoji 越过边界，已移回容器。'
         if (state === 'invalid') {

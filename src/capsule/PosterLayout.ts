@@ -71,11 +71,10 @@ function writeCaption(items: readonly CapsuleResult[], variation: number) {
   const second = catalog[kinds[1]]
   return choose([first + '约' + second + '串门', first + '和' + second + '同桌', first + '拉' + second + '出逃'])
 }
-export function portrait(kind: EmojiKind, state?: ReactionState): { kind: EmojiArtwork; badge?: EmojiKind; tilt: number } {
-  if (state?.sleep) return { kind, badge: 'moon', tilt: 0.3 }
-  if (state?.soothe) return { kind: 'soothed', badge: 'heart', tilt: -0.13 }
-  if (state?.brighten) return { kind: 'delighted', badge: 'sun', tilt: 0.12 }
-  if (state?.dash) return { kind, badge: 'lightning', tilt: -0.1 }
+export function portrait(kind: EmojiKind, state?: ReactionState): { kind: EmojiArtwork; tilt: number } {
+  if (state?.sleep) return { kind, tilt: 0.3 }
+  if (state?.soothe || state?.brighten) return { kind: 'smile', tilt: 0 }
+  if (state?.dash) return { kind, tilt: -0.1 }
   return { kind, tilt: 0 }
 }
 
@@ -89,17 +88,18 @@ export function createPoster(items: readonly CapsuleResult[], variation = 0, pre
   const rows = Math.ceil(ordered.length / columns)
   const width = 463 / columns
   const height = 484 / rows
+  const size = Math.round(Math.min(260, width * 0.75, height * 0.75))
   const layouts = [
-    [[323, 365, 264]],
-    [[386, 255, 221], [181, 465, 204]],
-    [[398, 251, 225], [166, 397, 177], [390, 537, 130]],
-    [[406, 254, 204], [144, 359, 161], [393, 516, 153], [209, 558, 88]],
-    [[406, 235, 195], [146, 318, 152], [375, 455, 160], [164, 544, 109], [479, 570, 92]],
+    [[323, 365]],
+    [[386, 255], [181, 465]],
+    [[398, 251], [166, 397], [390, 537]],
+    [[406, 254], [144, 359], [393, 516], [209, 558]],
+    [[406, 235], [146, 318], [375, 455], [164, 544], [479, 570]],
   ]
   const largerLayout = [
-    [422, 221, 188], [155, 325, 133], [302, 405, 105],
-    [465, 462, 129], [140, 533, 143], [314, 565, 91],
-    [235, 178, 83], [468, 589, 75], [87, 175, 84],
+    [422, 221], [155, 325], [302, 405],
+    [465, 462], [140, 533], [314, 565],
+    [235, 178], [468, 589], [87, 175],
   ]
   const composition = layouts[ordered.length - 1] ?? (ordered.length <= largerLayout.length ? largerLayout : undefined)
   const mirrored = Math.random() < 0.5
@@ -114,13 +114,11 @@ export function createPoster(items: readonly CapsuleResult[], variation = 0, pre
       const rowLength = Math.min(columns, ordered.length - row * columns)
       const column = index % columns - (rowLength - 1) / 2
       const slot = Math.min(width, height)
-      const [x, y, size] = composition?.[index] ?? [
+      const [x, y] = composition?.[index] ?? [
         300 + column * width + (Math.random() - 0.5) * slot * 0.53,
         378 + (row - (rows - 1) / 2) * height + (Math.random() - 0.5) * slot * 0.44,
-        Math.round(slot * (0.59 + Math.random() * 0.31)),
       ]
       const layoutVariant = variation % 4
-      const factor = [1, 0.80, 1.10, 0.91][layoutVariant]
       const angle = Math.round((Math.random() - 0.5) * 82) + [0, 29, -26, 15][layoutVariant]
       const sticker: Sticker = {
         kind: item.kind,
@@ -128,7 +126,7 @@ export function createPoster(items: readonly CapsuleResult[], variation = 0, pre
         source: item.source,
         x: 0,
         y: 0,
-        size: Math.max(12, Math.min(296, Math.round(size * factor) + Math.min(12, item.state?.grow ?? 0))),
+        size,
         tilt: ((angle + 123) % 82) - 41,
       }
       const layoutX = mirrored !== (layoutVariant % 2 === 1) ? 600 - x : x
@@ -165,7 +163,7 @@ export function isPoster(value: unknown): value is Poster {
     if (!s || !hasOnly(s, ['kind', 'state', 'source', 'x', 'y', 'size', 'tilt']) ||
       !isKind(s.kind) || ![s.x, s.y, s.size, s.tilt].every(Number.isInteger) ||
       s.size < 12 || s.size > 430 || s.x < 26 || s.x > 574 || s.y < 111 || s.y > 700 ||
-      Math.abs(s.tilt) > (p.version === 1 ? 16 : 41)) return false
+      Math.abs(s.tilt) > (p.version === 1 ? 16 : p.version === 2 ? 41 : 180)) return false
     if (p.version === 1 && (s.x < 40 || s.x > 560 || s.y < 130)) return false
     if (p.version !== 1) {
       const area = p.version === 3 ? galleryArtwork : artworkArea

@@ -23,6 +23,7 @@ export const defaultHandCalibration: HandCalibration = {
 export interface HandObservation {
   position: Point
   pinchRatio: number
+  side?: string
 }
 
 const dwellMs: Record<Gesture, number> = { open: 50, pinch: 45 }
@@ -61,6 +62,7 @@ export class GestureFilter {
         y: normalizeAxis(position.y, config.verticalMargin, config.verticalCenter),
       },
       sampledAt: now,
+      pinchProgress: Math.max(0, Math.min(1, (config.pinchThreshold + 0.42 - observation.pinchRatio) / 0.42)),
       holdPosition: this.stable !== undefined && this.pending !== undefined,
     }
   }

@@ -23,7 +23,7 @@ export async function printPoster(slot: HTMLElement, poster: Poster) {
       { transform: 'translateY(-92%)', offset: 0.12 },
       { transform: 'translateY(-51%)', offset: 0.52 },
       { transform: 'translateY(0)' },
-    ], { duration: 660, easing: 'linear' })
+    ], { duration: 990, easing: 'linear' })
     await feed.finished
     const target = Math.min(innerHeight * 0.43, innerWidth * 0.86)
     const targetHeight = target * posterSize.height / posterSize.width
@@ -33,7 +33,7 @@ export async function printPoster(slot: HTMLElement, poster: Poster) {
     await paper.animate([
       { transform: 'translate(0, 0) scale(1)' },
       { transform: 'translate(' + x + 'px,' + y + 'px) scale(' + target / width + ')' },
-    ], { duration: 440, easing: 'cubic-bezier(0.23, 1, 0.32, 1)', fill: 'forwards' }).finished
+    ], { duration: 660, easing: 'cubic-bezier(0.23, 1, 0.32, 1)', fill: 'forwards' }).finished
   } finally {
     paper.remove()
   }
