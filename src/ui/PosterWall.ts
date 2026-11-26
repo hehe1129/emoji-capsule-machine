@@ -1,7 +1,7 @@
 import { emojiImage } from '../emoji/emojiImage'
 import { portrait, posterPalette, posterSize, type Poster, type Sticker } from '../capsule/PosterLayout'
 import { PosterStore } from '../capsule/PosterStore'
-import type { Point } from '../input/InputManager'
+import type { Point, PointerId } from '../input/InputManager'
 import { roomHorizon } from '../core/config'
 import { PosterBreeze } from './PosterBreeze'
 
@@ -64,6 +64,7 @@ export function posterElement(poster: Poster, editable = false) {
 export class PosterWall {
   private readonly grid: HTMLElement
   private readonly breeze: PosterBreeze
+  private readonly sweeps = new Map<PointerId, { point: Point; tile?: HTMLElement; at: number }>()
   readonly store = new PosterStore()
   private items: Poster[] = []
   private next?: number
@@ -137,6 +138,40 @@ export class PosterWall {
   add(poster: Poster) {
     this.items = [poster, ...this.items.filter(item => item.id !== poster.id)]
     this.render()
+  }
+
+  sweep(pointer: PointerId, point?: Point) {
+    const view = this.surface.dataset.view
+    if (!point || (view !== 'overview' && view !== 'wall') || this.pan) {
+      this.sweeps.delete(pointer)
+      return
+    }
+    const now = performance.now()
+    const previous = this.sweeps.get(pointer)
+    const fresh = previous && now - previous.at < 220
+    const dx = fresh ? point.x - previous.point.x : 0
+    const dy = fresh ? point.y - previous.point.y : 0
+    const distance = Math.hypot(dx, dy)
+    if (fresh && distance < 2) return
+
+    let tile = fresh ? previous.tile : undefined
+    // Sample the whole pointer segment so a quick swipe can cross several posters.
+    const steps = Math.max(1, Math.ceil(distance / 18))
+    for (let i = 1; i <= steps; i++) {
+      const x = point.x - dx * (1 - i / steps)
+      const y = point.y - dy * (1 - i / steps)
+      const hit = document.elementsFromPoint(x, y).find(node => !node.matches('.wall-edge'))
+      const poster = hit?.closest<HTMLElement>('.poster-tile[data-poster]')
+      const next = poster && this.grid.contains(poster) ? poster : undefined
+      if (next && next !== tile && distance >= 2) {
+        const bounds = next.getBoundingClientRect()
+        const torque = (x - bounds.left - bounds.width / 2) * dy -
+          Math.max(bounds.height * 0.12, y - bounds.top) * dx
+        this.breeze.sweep(next, Math.sign(torque || -dx || dy))
+      }
+      tile = next
+    }
+    this.sweeps.set(pointer, { point, tile: distance >= 2 ? tile : undefined, at: now })
   }
 
   startPan(start: Point) {

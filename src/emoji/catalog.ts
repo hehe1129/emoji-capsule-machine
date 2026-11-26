@@ -6,7 +6,7 @@ const base = {
   crying: ['哭泣脸', '1f62d'], sun: ['太阳', '2600'], seedling: ['嫩芽', '1f331'],
   water: ['水滴', '1f4a7'], rain_cloud: ['雨云', '1f327'], star: ['星星', '2b50'],
   fire: ['火焰', '1f525'], snail: ['蜗牛', '1f40c'], rocket: ['火箭', '1f680'],
-  ice: ['冰块', '1f9ca'], gift: ['礼物', '1f381'],
+  ice: ['冰块', '1f9ca'], gift: ['礼物', '1f381'], bucket: ['铁桶', '1faa3'],
 } as const
 const derived = {
   heart_eyes_cat: ['爱心眼猫', '1f63b'], smiling: ['微笑脸', '1f60a'], happy: ['开心脸', '1f604'],

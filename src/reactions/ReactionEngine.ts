@@ -5,23 +5,13 @@ import { randomKind, type EmojiKind } from '../emoji/catalog'
 import type { EmojiEntity } from '../emoji/EmojiEntity'
 import { findRecipe } from './ReactionRules'
 import { Meltwater } from './Meltwater'
+import { resizeBody } from '../physics/resizeBody'
 
 type World = {
   remove: (entity: EmojiEntity) => void
   spawn: (x: number, y: number, kind: EmojiKind) => void
 }
 const { Body } = Matter
-function resize(body: Matter.Body, x: number, y: number) {
-  // Matter gives held bodies infinite density. Resize their dynamic shape before restoring the hold.
-  const held = body.isStatic
-  if (held) Body.setStatic(body, false)
-  const angle = body.angle
-  Body.setAngle(body, 0)
-  Body.scale(body, x, y)
-  Body.setAngle(body, angle)
-  if (held) Body.setStatic(body, true)
-}
-
 export class ReactionEngine {
   readonly water = new Meltwater()
 
@@ -53,7 +43,7 @@ export class ReactionEngine {
       const progress = reaction?.rule.effect === 'elongate' ? Math.min(1, (reaction.elapsed + delta) / reaction.rule.duration) : 0
       const height = start + (flowerHeight(count + 1, compact) - start) * progress
       const previous = actor.heightScale ?? 1
-      if (height !== previous) resize(actor.body, 1, height / previous)
+      if (height !== previous) resizeBody(actor.body, 1, height / previous)
       actor.heightScale = height
       actor.compactFlower = compact
     }
@@ -64,7 +54,7 @@ export class ReactionEngine {
     const body = actor.body
     if (rule.effect === 'grow' && !actor.reactionCounts?.grow && progress > 0.25) {
       const radius = arena.radius * (1 + 2 * (progress - 0.25) / 0.75)
-      resize(body, radius / actor.radius, radius / actor.radius)
+      resizeBody(body, radius / actor.radius, radius / actor.radius)
       actor.radius = radius
     }
     if (!body.isStatic) {

@@ -1,5 +1,5 @@
 import { Application, Graphics } from 'pixi.js'
-import { arena, cabinet, groundY, room, roofY, hatchX, hatchEnd } from '../core/config'
+import { arena, cabinet, groundY, room, roofY } from '../core/config'
 import { emojiImage } from '../emoji/emojiImage'
 import type { EmojiEntity } from '../emoji/EmojiEntity'
 import { portrait } from '../capsule/PosterLayout'
@@ -81,8 +81,9 @@ export class SceneRenderer {
       const progress = reaction ? reaction.elapsed / reaction.rule.duration : 1
       visual.fx?.update(entity, visual.image, progress)
       const entry = Math.sin(entity.spawnRemaining / 420 * Math.PI)
-      const size = radius / arena.radius * (1 + entry * 0.09)
-      visual.root.style.transform = 'translate(' + x + 'px,' + y + 'px) rotate(' + (body.angle + art.tilt) + 'rad) scale(' + size + ')'
+      const flex = entity.lidScale ?? 1
+      const size = radius / arena.radius * (1 + entry * 0.09) * flex * (entity.waterScale ?? 1)
+      visual.root.style.transform = 'translate(' + x + 'px,' + y + 'px) rotate(' + (body.angle + art.tilt) + 'rad) scale(' + size * (1 + (1 - flex) * 0.16) + ',' + size + ')'
       visual.root.toggleAttribute('data-retained', !!entity.retained)
       visual.root.toggleAttribute('data-held', held)
       visual.root.toggleAttribute('data-outside', !entity.retained &&
@@ -109,24 +110,25 @@ export class SceneRenderer {
   }
 
   private drawWater(water: Meltwater) {
-    const { chamber, tray } = cabinet
-    const drawPool = (x: number, bottom: number, width: number, depth: number) => {
-      if (depth <= 0) return
-      this.graphics.rect(x, bottom - depth, width, depth).fill({ color: 0x55b9ed, alpha: 0.65 })
-      this.graphics.moveTo(x, bottom - depth).lineTo(x + width, bottom - depth)
-        .stroke({ color: 0x94dcf6, width: 1.5 })
+    const { x, y } = cabinet.chamber
+    for (const pool of water.pools) {
+      if (pool.volume <= 0.01) continue
+      const bottom = y + pool.bottom
+      const left = x + pool.left
+      const surface: number[] = []
+      for (let i = 0; i < pool.cells.length; i++) {
+        surface.push(left + (i + 0.5) * pool.width, bottom - pool.depth(i))
+      }
+      const startY = surface[1]
+      const endY = surface[surface.length - 1]
+      const edge = [left, startY, ...surface, x + pool.right, endY]
+      this.graphics.poly([left, bottom, ...edge, x + pool.right, bottom]).fill({ color: 0x7bdccd, alpha: 0.57 })
+      this.graphics.poly(edge, false).stroke({ color: 0xb2eee6, width: 1.5 })
     }
-    drawPool(chamber.x, tray.y, chamber.width, Math.min(arena.height - roofY, water.chamber / chamber.width))
-    const depth = water.tray / tray.width
-    drawPool(tray.x, tray.y + tray.height, tray.width, depth)
-    if (water.flow > 0) {
-      const width = (hatchEnd - hatchX) * water.flow
-      this.graphics.rect(chamber.x + hatchEnd - width, tray.y, width, tray.height - depth)
-        .fill({ color: 0x77c8ee, alpha: 0.42 })
-    }
-    for (const { x, volume } of water.puddles) {
-      this.graphics.ellipse(chamber.x + x, chamber.y + groundY - 2, Math.sqrt(volume), 4)
-        .fill({ color: 0x55b9ed, alpha: 0.65 })
+    for (const particle of water.droplets) {
+      const radius = Math.max(1.1, Math.min(5.5, Math.sqrt(particle.volume / Math.PI)))
+      this.graphics.ellipse(x + particle.x, y + particle.y, radius, radius * (1 + Math.abs(particle.vy) * 0.65))
+        .fill({ color: 0x8ce1d6, alpha: 0.85 })
     }
   }
 }

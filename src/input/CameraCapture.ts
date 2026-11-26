@@ -15,7 +15,12 @@ export const browserCameraCapture = {
     }
     return media.getUserMedia({
       audio: false,
-      video: deviceId ? { deviceId: { exact: deviceId } } : true,
+      video: {
+        width: { ideal: 640 },
+        height: { ideal: 480 },
+        frameRate: { ideal: 60 },
+        ...(deviceId ? { deviceId: { exact: deviceId } } : {}),
+      },
     })
   },
 

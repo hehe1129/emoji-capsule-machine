@@ -1,13 +1,15 @@
 import Matter from 'matter-js'
 import { arena, cabinet, groundY, hatchEnd, hatchMotionMs, hatchThickness, hatchX, lid, roofY, room, trayEnd, trayX, type LidSide, type Settings } from '../core/config'
 import type { Point } from '../input/InputManager'
+import type { EmojiEntity } from '../emoji/EmojiEntity'
+import { resizeBody } from './resizeBody'
 
 const { Bodies, Body, Composite, Engine, Events, Query, Vertices } = Matter
 export const physicsStep = 1000 / 120
 const maxSpeed = 24
 const matterVelocityStep = 1000 / 60
-const followSpeed = 1650 // scene units per second
-const followTimeMs = 45
+const followSpeed = 2250 // scene units per second
+const followTimeMs = 16
 const roomTop = -240
 const trayBottom = arena.height + cabinet.tray.height
 const wall = { isStatic: true, friction: 0.05 }
@@ -99,6 +101,10 @@ export class PhysicsManager {
     return body
   }
 
+  setAngle(body: Matter.Body, angle: number) {
+    Body.setAngle(body, angle)
+  }
+
   tune(body: Matter.Body, { restitution, friction }: Settings) {
     body.restitution = restitution
     body.friction = friction
@@ -148,6 +154,32 @@ export class PhysicsManager {
     } else if (!this.tryMove(body, start, 0, y)) {
       this.tryMove(body, start, x, 0)
     }
+  }
+
+  flexAtLid(entity: EmojiEntity, target?: Point) {
+    const { body, radius } = entity
+    const extent = radius * (entity.heightScale ?? 1)
+    const previous = entity.lidScale ?? 1
+    if (extent <= arena.radius && previous === 1) return
+    const { x, y } = body.position
+    const end = this.lidSide === 'left' ? 0 : arena.width
+    const nearGap = this.lidSide && Math.abs(x - end) < 110 &&
+      y >= roofY - 130 && y <= roofY + extent + 24
+    const aimingAtGap = nearGap && target && target.y < roofY + 72
+    const crossingGap = nearGap && (previous < 1
+      ? (Math.abs(x - end) < 78 || (y > roofY - 100 && y < roofY + 26))
+      : (Math.abs(x - end) < 62 && y < roofY + 36))
+    const desired = aimingAtGap || crossingGap ? Math.min(1, 24 / extent) : 1
+    const easing = 1 - Math.exp(-physicsStep / (desired < previous ? 22 : 72))
+    const next = Math.abs(previous - desired) < 0.008 ? desired : previous + (desired - previous) * easing
+    if (next === previous) return
+
+    resizeBody(body, next / previous, next / previous)
+    if (next > previous && Query.collides(body, this.dragObstacles).some(contact => contact.depth > 0.8)) {
+      resizeBody(body, previous / next, previous / next)
+      return
+    }
+    entity.lidScale = next === 1 ? undefined : next
   }
 
   touch(first: Matter.Body, second: Matter.Body) {

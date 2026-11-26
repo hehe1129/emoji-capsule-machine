@@ -5,7 +5,8 @@ export type InputSample = ({
   position: Point
   gesture: 'hover' | 'open' | 'pinch'
   sampledAt?: number
-  holdPosition?: boolean
+  palm?: Point
+  closing?: boolean
   pinchProgress?: number
 } | { gesture: 'lost'; trackingTimeout?: { at: number; hidden: boolean } }) & { pointer?: PointerId }
 
@@ -22,8 +23,7 @@ type PointerAction = {
 export type InputAction = PointerAction & { pointer: PointerId }
 
 const displayFrameMs = 1000 / 60
-const maxCursorSpeed = 0.0036 // normalized units per millisecond
-const largeSampleJump = 0.18 // normalized distance between camera observations
+const largeSampleJump = 0.32 // normalized distance between camera observations
 const resumeAfterHideMs = 650
 
 // Sources deliver normalized surface coordinates. Smoothing and transitions
@@ -35,6 +35,8 @@ export class InputManager {
   constructor(
     private readonly send: (action: InputAction) => void,
     private readonly smoothing: () => number,
+    private readonly showCameraPoint?: (pointer: PointerId, point: Point, at: number, reset: boolean) => void,
+    private readonly paintedCameraPoint?: (pointer: PointerId) => Point | undefined,
   ) {}
 
   use(source: InputSource) {
@@ -44,7 +46,9 @@ export class InputManager {
       const pointer = sample.pointer ?? 'mouse'
       let filter = this.pointers.get(pointer)
       if (!filter) {
-        filter = new PointerFilter(action => this.send({ ...action, pointer }), this.smoothing)
+        filter = new PointerFilter(action => this.send({ ...action, pointer }), this.smoothing,
+          (point, at, reset) => this.showCameraPoint?.(pointer, point, at, reset),
+          () => this.paintedCameraPoint?.(pointer))
         this.pointers.set(pointer, filter)
       }
       filter.accept(sample)
@@ -59,7 +63,7 @@ export class InputManager {
 class PointerFilter {
   private position?: Point
   private pressed = false
-  private pinchAnchor?: { offset: Point; previous: Point; remaining: number }
+  private cameraAnchor?: { aim: Point; hand: Point; usesPalm: boolean }
   private cameraTarget?: Point
   private lastCameraPoint?: Point
   private suspectCameraPoint?: Point
@@ -71,11 +75,12 @@ class PointerFilter {
   constructor(
     private readonly send: (action: PointerAction) => void,
     private readonly smoothing: () => number,
+    private readonly showCameraPoint: (point: Point, at: number, reset: boolean) => void,
+    private readonly paintedCameraPoint: () => Point | undefined,
   ) {}
 
   update(now: number) {
-    // A delayed paint gets the same travel budget as a normal frame.
-    const elapsed = Math.min(now - (this.frameAt ?? now), displayFrameMs)
+    const elapsed = Math.min(now - (this.frameAt ?? now), 40)
     this.frameAt = now
     const target = this.cameraTarget
     if (!this.position || elapsed <= 0) return
@@ -88,8 +93,8 @@ class PointerFilter {
     const dx = target.x - this.position.x
     const dy = target.y - this.position.y
     const distance = Math.hypot(dx, dy)
-    const fraction = distance <= 0.0005 ? 1
-      : Math.min(1 - this.smoothing() ** (elapsed / displayFrameMs), maxCursorSpeed * elapsed / distance)
+    const retention = this.smoothing() / (1 + distance * 24)
+    const fraction = distance <= 0.0005 ? 1 : 1 - retention ** (elapsed / displayFrameMs)
     this.position = {
       x: this.position.x + dx * fraction,
       y: this.position.y + dy * fraction,
@@ -111,7 +116,7 @@ class PointerFilter {
       this.pressed = false
       this.pinchProgress = 0
       this.paintProgress = false
-      this.pinchAnchor = undefined
+      this.cameraAnchor = undefined
       this.cameraTarget = undefined
       this.lastCameraPoint = undefined
       this.suspectCameraPoint = undefined
@@ -120,7 +125,7 @@ class PointerFilter {
     }
 
     let { position } = sample
-    const { sampledAt, holdPosition } = sample
+    const { sampledAt } = sample
     const resumeUntil = this.resumeUntil
     if (resumeUntil !== undefined) {
       if (sampledAt === undefined || sampledAt > resumeUntil) this.position = undefined
@@ -131,41 +136,33 @@ class PointerFilter {
     this.paintProgress = progress !== this.pinchProgress
     this.pinchProgress = progress
     const changed = pressed !== this.pressed
-    const camera = sampledAt !== undefined
-    if (camera && changed && pressed && this.position) {
-      this.pinchAnchor = {
-        offset: { x: this.position.x - position.x, y: this.position.y - position.y },
-        previous: position,
-        remaining: 1,
+    if (sampledAt !== undefined) {
+      // Use the same physical point before, during and after the pinch.
+      const usesPalm = sample.palm !== undefined
+      if (this.cameraAnchor?.usesPalm !== usesPalm) this.lastCameraPoint = this.suspectCameraPoint = undefined
+      const hand = this.confirmCameraPoint(sample.palm ?? position)
+      const rebase = changed || !this.cameraAnchor || this.cameraAnchor.usesPalm !== usesPalm
+      if (rebase) {
+        const aim = this.paintedCameraPoint() ?? this.position ?? position
+        this.cameraAnchor = { aim, hand, usesPalm }
       }
-    } else if (!pressed) {
-      this.pinchAnchor = undefined
-    }
-
-    const lockPosition = camera && (changed || holdPosition)
-    if (this.pinchAnchor && !lockPosition) {
-      const anchor = this.pinchAnchor
-      const distance = Math.hypot(position.x - anchor.previous.x, position.y - anchor.previous.y)
-      // Blend away the pose offset when the pinch actually moves.
-      anchor.remaining = Math.max(0, anchor.remaining - Math.max(0, distance - 0.004) / 0.14)
-      anchor.previous = position
-      position = {
-        x: Math.max(0, Math.min(1, position.x + anchor.offset.x * anchor.remaining)),
-        y: Math.max(0, Math.min(1, position.y + anchor.offset.y * anchor.remaining)),
-      }
-    }
-
-    if (camera) {
-      // The display loop follows the latest sample and never jumps ahead of it.
-      if (lockPosition) {
+      if (sample.closing && !pressed && this.position) {
+        const aim = this.paintedCameraPoint() ?? this.position
+        this.cameraAnchor = { aim, hand, usesPalm }
+        this.position = aim
         this.cameraTarget = undefined
-        this.lastCameraPoint = undefined
-        this.suspectCameraPoint = undefined
-      } else {
-        this.cameraTarget = this.confirmCameraPoint(position)
+        this.showCameraPoint(aim, sampledAt, true)
+        return
       }
+      const { aim, hand: origin } = this.cameraAnchor!
+      position = {
+        x: Math.max(0, Math.min(1, aim.x + (hand.x - origin.x))),
+        y: Math.max(0, Math.min(1, aim.y + (hand.y - origin.y))),
+      }
+      this.showCameraPoint(position, sampledAt, rebase)
+      this.cameraTarget = position
       if (this.position && !changed && resumeUntil === undefined) return
-      this.position ??= position
+      this.position = position
     } else if (!this.position || changed) {
       this.position = position
     } else {

@@ -17,43 +17,51 @@ export const defaultHandCalibration: HandCalibration = {
   horizontalMargin: 0.12,
   verticalMargin: 0.18,
   verticalCenter: 0.62,
-  smoothing: 0.55,
+  smoothing: 0.34,
 }
 
 export interface HandObservation {
   position: Point
   pinchRatio: number
+  palm?: Point
   side?: string
 }
 
-const dwellMs: Record<Gesture, number> = { open: 50, pinch: 45 }
-const evidenceGapMs = 125
-const lossGraceMs = 240
-const gripLossGraceMs = 100
-const cursorGraceMs = 420
+const evidenceGapMs = 120
+const gripLossGraceMs = 135
+const cursorGraceMs = 360
 
-function normalizeAxis(value: number, margin: number, center = 0.5) {
+function normalizeAxis(value: number, margin: number, center = 0.5, bounded = true) {
   const span = 1 - 2 * margin
   const start = Math.max(0, Math.min(1 - span, center - span / 2))
-  return Math.max(0, Math.min(1, (value - start) / span))
+  const normalized = (value - start) / span
+  return bounded ? Math.max(0, Math.min(1, normalized)) : normalized
 }
 
 export class GestureFilter {
   private stable?: Gesture
-  private armed = false
-  private pending?: { gesture: Gesture; since: number; lastSeen: number }
+  private pending?: Gesture
   private lastSeen = -Infinity
   private trackingInterrupted = false
 
   observe(observation: HandObservation | undefined, now: number, config: HandCalibration): InputSample | undefined {
     if (!observation) return this.expire(now)
-    if (now - this.lastSeen >= lossGraceMs) this.resetPose()
+    const gap = now - this.lastSeen
+    if (gap > evidenceGapMs) this.pending = undefined
     this.trackingInterrupted = false
     this.lastSeen = now
-    const { position } = observation
-    const threshold = config.pinchThreshold + (this.stable === 'pinch' ? 0.12 : 0)
-    const pose = observation.pinchRatio <= threshold ? 'pinch' : 'open'
-    this.updatePose(pose, now)
+    const { position, pinchRatio, palm } = observation
+    const close = config.pinchThreshold
+    const open = close + 0.075
+    const pose: Gesture | undefined = pinchRatio <= close ? 'pinch' : pinchRatio >= open ? 'open' : undefined
+    if (!pose || pose === this.stable) {
+      this.pending = undefined
+    } else if (this.pending === pose || (pose === 'pinch' ? pinchRatio <= close - 0.055 : pinchRatio >= open + 0.045)) {
+      this.stable = pose
+      this.pending = undefined
+    } else {
+      this.pending = pose
+    }
 
     return {
       gesture: this.stable ?? 'hover',
@@ -61,25 +69,13 @@ export class GestureFilter {
         x: normalizeAxis(config.mirror ? 1 - position.x : position.x, config.horizontalMargin),
         y: normalizeAxis(position.y, config.verticalMargin, config.verticalCenter),
       },
+      palm: palm && {
+        x: normalizeAxis(config.mirror ? 1 - palm.x : palm.x, config.horizontalMargin, 0.5, false),
+        y: normalizeAxis(palm.y, config.verticalMargin, config.verticalCenter, false),
+      },
       sampledAt: now,
-      pinchProgress: Math.max(0, Math.min(1, (config.pinchThreshold + 0.42 - observation.pinchRatio) / 0.42)),
-      holdPosition: this.stable !== undefined && this.pending !== undefined,
-    }
-  }
-
-  private updatePose(gesture: Gesture, now: number) {
-    if (this.pending && now - this.pending.lastSeen > evidenceGapMs) this.pending = undefined
-    // Require separation after tracking loss before accepting another pinch.
-    if (gesture === this.stable || (!this.armed && gesture === 'pinch')) {
-      this.pending = undefined
-    } else if (this.pending?.gesture !== gesture) {
-      this.pending = { gesture, since: now, lastSeen: now }
-    } else if (now - this.pending.since >= dwellMs[gesture]) {
-      this.stable = gesture
-      if (gesture === 'open') this.armed = true
-      this.pending = undefined
-    } else {
-      this.pending.lastSeen = now
+      closing: this.pending === 'pinch',
+      pinchProgress: Math.max(0, Math.min(1, (close + 0.38 - pinchRatio) / 0.38)),
     }
   }
 
@@ -90,7 +86,7 @@ export class GestureFilter {
       this.reset()
       return { gesture: 'lost', trackingTimeout: { at: now, hidden: true } }
     }
-    if (gap < (this.stable === 'pinch' ? gripLossGraceMs : lossGraceMs) || this.trackingInterrupted) return
+    if (gap < gripLossGraceMs || this.trackingInterrupted) return
     // Release a held item on schedule, but keep the cursor parked through brief tracking loss.
     this.resetPose()
     this.trackingInterrupted = true
@@ -99,7 +95,6 @@ export class GestureFilter {
 
   private resetPose() {
     this.stable = undefined
-    this.armed = false
     this.pending = undefined
   }
 

@@ -111,7 +111,7 @@ export function createPoster(items: readonly CapsuleResult[], variation = 0, pre
     version: 3,
     id: previous?.id ?? crypto.randomUUID(),
     createdAt: previous?.createdAt ?? new Date().toISOString(),
-    palette: previous?.palette ?? 5,
+    palette: previous?.palette ?? Math.floor(Math.random() * posterColors.length),
     caption: writeCaption(items, variation),
     stickers: ordered.map((item, index) => {
       const row = Math.floor(index / columns)

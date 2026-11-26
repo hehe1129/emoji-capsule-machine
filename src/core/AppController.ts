@@ -1,13 +1,14 @@
 import { arena, groundY, hatchThickness, inletY, roofY, shakeDuration, trayX, trayEnd, type LidSide, type Settings } from './config'
 import { PhysicsManager, physicsStep } from '../physics/PhysicsManager'
+import { findRecipe } from '../reactions/ReactionRules'
 import { ReactionEngine } from '../reactions/ReactionEngine'
 import type { EmojiEntity } from '../emoji/EmojiEntity'
-import { randomKind, type EmojiKind } from '../emoji/catalog'
+import { baseKinds, randomKind, type EmojiKind } from '../emoji/catalog'
 import type { Point, PointerId } from '../input/InputManager'
 import { captureCapsule, collectible, type CapsuleResult } from '../capsule/CapsuleResult'
 
 const throwSmoothing = 1 - Math.exp(-physicsStep / 30)
-const maxDragSpeed = 1.65 // scene units per millisecond
+const maxDragSpeed = 2.25 // scene units per millisecond
 type Held = { entity: EmojiEntity; offset: Point; target?: Point; smooth: boolean; previous: Point; velocity: Point }
 
 export class AppController {
@@ -16,6 +17,9 @@ export class AppController {
   private readonly objects = new Map<number, EmojiEntity>()
   private readonly held = new Map<PointerId, Held>()
   private readonly posterSelection = new Set<number>()
+  private readonly floorStock = new Set<number>()
+  private stockedFloor = false
+  private readonly flexing = new Set<number>()
   private readonly heldBodies = new Set<number>()
   private feedSide?: LidSide
   private dragSide?: LidSide
@@ -26,13 +30,7 @@ export class AppController {
   private nextJolt = 0
   notice = ''
 
-  constructor(readonly settings: Settings) {
-    for (let index = 0; index < 10; index++) {
-      const x = 48 + index % 5 * 85 + Math.random() * 18
-      const y = arena.height - 36 - Math.floor(index / 5) * 56
-      this.spawn(x, y, false)
-    }
-  }
+  constructor(readonly settings: Settings) {}
 
   private readonly reactionWorld = {
     remove: (entity: EmojiEntity) => this.remove(entity),
@@ -84,6 +82,63 @@ export class AppController {
 
   resizeRoom(left: number, right: number, top?: number) {
     this.physics.resizeRoom(left, right, top)
+    if (this.stockedFloor) return
+    this.stockedFloor = true
+    const spacing = 2 * arena.radius + 7
+    const cabinetClearance = 50 + spacing
+    for (const side of ['left', 'right'] as const) {
+      const available = side === 'left' ? -left : right - arena.width
+      const extras = 2 + Math.floor(Math.random() * 3)
+      const stock = [...baseKinds, ...Array.from({ length: extras }, randomKind)]
+      const usableWidth = available - cabinetClearance - arena.radius
+      const bottomCount = Math.max(1, Math.min(stock.length - 3, Math.floor(usableWidth / (spacing - 3)) + 1))
+      const upperCount = stock.length - bottomCount
+      const stride = Math.min(spacing * 1.18, usableWidth / Math.max(1, bottomCount - 1))
+      const upperSlots = Array.from({ length: bottomCount - 1 }, (_, column) => column)
+      for (let index = upperSlots.length - 1; index > 0; index--) {
+        const other = Math.floor(Math.random() * (index + 1))
+        ;[upperSlots[index], upperSlots[other]] = [upperSlots[other], upperSlots[index]]
+      }
+      const spots = stock.map((_, index) => {
+        const upper = index >= bottomCount
+        const upperIndex = index - bottomCount
+        const column = upper ? upperSlots[upperIndex % upperSlots.length] ?? upperIndex / upperCount : index
+        // Stagger the upper row so it can settle into the spaces between lower pieces.
+        const offset = cabinetClearance + (column + (upper ? 0.48 : 0)) * stride +
+          (Math.random() - 0.5) * stride * (upper ? 0.04 : 0.07)
+        return {
+          x: side === 'left' ? -offset : arena.width + offset,
+          y: groundY - arena.radius - (upper ? spacing * 0.92 + Math.random() * 7 : Math.random() * 2),
+        }
+      })
+      // Shuffle candidates and backtrack when a reaction partner would be too close.
+      const arrangement: EmojiKind[] = []
+      const assign = (remaining: readonly EmojiKind[]): boolean => {
+        if (!remaining.length) return true
+        const spot = spots[arrangement.length]
+        const pending = [...remaining]
+        while (pending.length) {
+          const [kind] = pending.splice(Math.floor(Math.random() * pending.length), 1)
+          if (arrangement.some((nearby, index) => Math.abs(spot.x - spots[index].x) < spacing * 1.3 &&
+            Math.abs(spot.y - spots[index].y) < spacing * 1.7 && findRecipe(nearby, kind))) continue
+          arrangement.push(kind)
+          const next = [...remaining]
+          next.splice(next.indexOf(kind), 1)
+          if (assign(next)) return true
+          arrangement.pop()
+        }
+        return false
+      }
+      if (!assign(stock)) throw new Error('Could not place both complete floor sets')
+      for (const [index, kind] of arrangement.entries()) {
+        const { x, y } = spots[index]
+        const body = this.spawn(x, y, false, kind)
+        this.physics.setAngle(body, (Math.random() - 0.5) * 2.1)
+        // Keep the two visible rows in place until the first grab.
+        this.physics.hold(body, true)
+        this.floorStock.add(body.id)
+      }
+    }
   }
 
   setFeedLid(side?: LidSide) {
@@ -93,14 +148,36 @@ export class AppController {
   private updateLid() {
     const near = [...this.held.values()].find(({ entity, target }) => {
       const { x, y } = entity.body.position
-      return target && y < roofY + 83 && y > roofY - 145 && x > -115 && x < arena.width + 115 &&
-        target.y < roofY + 65 && target.y > roofY - 148
+      const extent = entity.radius * (entity.heightScale ?? 1)
+      return target && y < roofY + Math.max(83, extent + 34) && y > roofY - 175 &&
+        x > -175 && x < arena.width + 175 && target.y < roofY + 65 && target.y > roofY - 220
     })
     this.lidReleaseMs = Math.max(0, this.lidReleaseMs - physicsStep)
-    if (near) this.dragSide ??= near.entity.body.position.x <= arena.width / 2 ? 'left' : 'right'
+    if (near) this.dragSide ??= (near.target?.x ?? near.entity.body.position.x) <= arena.width / 2 ? 'left' : 'right'
     else if (!this.lidReleaseMs) this.dragSide = undefined
     const side = this.arrivals.values().next().value?.side ?? this.feedSide ?? this.dragSide
     if (side !== this.lidSide) this.physics.setLid(side, Array.from(this.entities, entity => entity.body))
+  }
+
+  private pickDropKind() {
+    const chamber = new Set<EmojiKind>()
+    for (const entity of this.entities) {
+      const { x, y } = entity.body.position
+      if (!entity.retained && !this.arrivals.has(entity.body.id) &&
+        x >= 0 && x <= arena.width && y >= roofY && y < arena.height) chamber.add(entity.kind)
+    }
+    const present = [...chamber]
+    const pools = [
+      { weight: 3, kinds: baseKinds.filter(kind => present.some(other => findRecipe(kind, other))) },
+      { weight: 1, kinds: baseKinds.filter(kind => chamber.has(kind)) },
+      { weight: 2, kinds: baseKinds.filter(kind => !chamber.has(kind)) },
+    ].filter(pool => pool.kinds.length > 0)
+    let draw = Math.random() * pools.reduce((total, pool) => total + pool.weight, 0)
+    for (const { weight, kinds } of pools) {
+      if (draw < weight) return kinds[Math.floor(Math.random() * kinds.length)]
+      draw -= weight
+    }
+    return randomKind()
   }
 
   drop(side: LidSide) {
@@ -109,7 +186,7 @@ export class AppController {
       return false
     }
     const direction = side === 'left' ? 1 : -1
-    const body = this.spawn(side === 'left' ? -75 : arena.width + 75, inletY - 32, true)
+    const body = this.spawn(side === 'left' ? -75 : arena.width + 75, inletY - 32, true, this.pickDropKind())
     this.physics.hold(body, true)
     this.arrivals.set(body.id, {
       entity: this.objects.get(body.id)!, side, elapsed: 0, endX: 57 + Math.random() * 27,
@@ -148,9 +225,12 @@ export class AppController {
     for (const [pointer, held] of this.held) {
       if (held.entity === entity) this.release(false, pointer)
     }
+    this.water.releaseContents(entity)
     this.physics.remove(entity.body)
     this.objects.delete(entity.body.id)
     this.posterSelection.delete(entity.body.id)
+    this.floorStock.delete(entity.body.id)
+    this.flexing.delete(entity.body.id)
   }
 
   grab(point: Point, outsideOnly = false, hideGround = false, pointer: PointerId = 'mouse') {
@@ -169,7 +249,7 @@ export class AppController {
       const distance = entity.heightScale
         ? Math.hypot(dx * Math.cos(angle) + dy * Math.sin(angle), (dy * Math.cos(angle) - dx * Math.sin(angle)) / entity.heightScale)
         : Math.hypot(dx, dy)
-      if (distance <= entity.radius + this.settings.grabRange && distance <= minDistance) {
+      if (distance <= entity.radius * (entity.lidScale ?? 1) * (entity.waterScale ?? 1) + this.settings.grabRange && distance <= minDistance) {
         closest = entity
         minDistance = distance
       }
@@ -182,6 +262,7 @@ export class AppController {
       previous: { x, y }, smooth: false,
       velocity: { x: 0, y: 0 },
     })
+    this.floorStock.delete(closest.body.id)
     this.heldBodies.add(closest.body.id)
     this.physics.hold(closest.body, true)
     return true
@@ -209,6 +290,13 @@ export class AppController {
     }
     this.held.delete(pointer)
     this.heldBodies.delete(body.id)
+  }
+
+  private dragTarget(entity: EmojiEntity) {
+    if (!this.heldBodies.has(entity.body.id)) return
+    for (const held of this.held.values()) {
+      if (held.entity === entity) return held.target
+    }
   }
 
   private stepDrag(held: Held) {
@@ -275,13 +363,20 @@ export class AppController {
       this.advanceDrop()
       const hatchOpen = this.hatchOpen
       this.physics.moveHatch(hatchOpen, this.entities)
+      if (this.lidSide || this.flexing.size) {
+        for (const entity of this.entities) {
+          this.physics.flexAtLid(entity, this.dragTarget(entity))
+          if (entity.lidScale) this.flexing.add(entity.body.id)
+          else this.flexing.delete(entity.body.id)
+        }
+      }
       for (const held of this.held.values()) this.stepDrag(held)
       // The solver skips static/static pairs. Both pinched pieces are static during a two-hand drag.
       if (this.held.size === 2) {
         const [a, b] = this.held.values()
         if (this.physics.touch(a.entity.body, b.entity.body)) this.reactions.contact(a.entity, b.entity, this.reactionWorld)
       }
-      this.water.step(physicsStep, this.hatchProgress)
+      this.water.step(physicsStep, this.hatchProgress, phase)
       for (const entity of this.entities) {
         this.reactions.advance(entity, physicsStep, this.settings.reactionCooldown, this.reactionWorld, hatchOpen)
       }
@@ -289,18 +384,22 @@ export class AppController {
         const first = this.objects.get(bodyA.id)
         const second = this.objects.get(bodyB.id)
         if (first && second && !this.arrivals.has(bodyA.id) && !this.arrivals.has(bodyB.id) &&
-          !this.posterSelection.has(bodyA.id) && !this.posterSelection.has(bodyB.id)) {
+          !this.posterSelection.has(bodyA.id) && !this.posterSelection.has(bodyB.id) &&
+          !(this.floorStock.has(bodyA.id) && this.floorStock.has(bodyB.id))) {
           this.reactions.contact(first, second, this.reactionWorld)
         }
       }
       for (const entity of this.entities) {
-        const { body, radius } = entity
+        const { body } = entity
+        const radius = entity.radius * (entity.lidScale ?? 1) * (entity.waterScale ?? 1)
         entity.spawnRemaining = Math.max(0, entity.spawnRemaining - physicsStep)
         const { x, y } = body.position
         if (!entity.retained && x >= trayX && x <= trayEnd && y - radius >= arena.height + hatchThickness) {
           entity.retained = true
         }
         if (entity.retained && y + radius <= arena.height) entity.retained = false
+        this.water.interact(entity, physicsStep, this.heldBodies.has(body.id),
+          phase === undefined ? this.settings.gravity : Math.max(0.55, this.settings.gravity))
         const state = this.physics.contain(body, radius, !!entity.retained)
         if (state === 'recovered') this.notice = '一个 Emoji 越过边界，已移回容器。'
         if (state === 'invalid') {

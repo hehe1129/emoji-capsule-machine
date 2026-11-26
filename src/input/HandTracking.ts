@@ -1,14 +1,14 @@
 import { GestureFilter, type HandCalibration } from './GestureFilter'
 import { handPointers, type InputSample, type InputSource } from './InputManager'
 import { associateHands, type SeenHand } from './HandAssociation'
-import type { createHandRecognizer } from './MediaPipeRecognizer'
+import { createHandInference } from './HandInference'
 import type { CameraCapture } from './CameraCapture'
 
 type PoseStatus = 'seeking' | 'hover' | 'open' | 'pinch'
 export type HandStatus = PoseStatus | 'permission' | 'starting' | 'loading' | 'no-frames' | 'dark-frames' | 'model-error' | 'inference-error'
 
 const frameTimeoutMs = 1500
-const inferenceIntervalMs = 32
+const inferenceIntervalMs = 14
 const brightnessCheckMs = 400
 
 function readBrightness(context: CanvasRenderingContext2D, video: HTMLVideoElement) {
@@ -61,11 +61,21 @@ export class HandTracking implements InputSource {
     let darkSince: number | undefined
     let stream: MediaStream | undefined
     let track: MediaStreamTrack | undefined
-    let recognizer: Awaited<ReturnType<typeof createHandRecognizer>> | undefined
+    let recognizer: Awaited<ReturnType<typeof createHandInference>> | undefined
     let frame = 0
+    let videoFrame = 0
+    let presentedFrames = 0
+    const hasVideoFrames = typeof video.requestVideoFrameCallback === 'function'
+    const markVideoFrame: VideoFrameRequestCallback = (_now, metadata) => {
+      if (events.signal.aborted) return
+      presentedFrames = metadata.presentedFrames
+      videoFrame = video.requestVideoFrameCallback(markVideoFrame)
+    }
     let lastVideoTime = -1
     let lastFrameAt = 0
     let lastInference = -Infinity
+    let inferencePending = false
+    let generation = 0
     let modelState: 'idle' | 'loading' | 'ready' | 'model-error' | 'inference-error' = 'idle'
     let status: HandStatus | undefined
     let blurred = false
@@ -84,6 +94,7 @@ export class HandTracking implements InputSource {
     }
 
     const reset = () => {
+      generation++
       for (const hand of tracks) {
         hand.seen = undefined
         publish(hand, hand.filter.reset())
@@ -104,6 +115,7 @@ export class HandTracking implements InputSource {
       if (stopped()) return
       events.abort()
       cancelAnimationFrame(frame)
+      if (hasVideoFrames) video.cancelVideoFrameCallback(videoFrame)
       reset()
       video.pause()
       video.srcObject = null
@@ -132,9 +144,7 @@ export class HandTracking implements InputSource {
     async function loadModel() {
       modelState = 'loading'
       try {
-        const { createHandRecognizer } = await import('./MediaPipeRecognizer')
-        if (stopped()) return
-        recognizer = await createHandRecognizer()
+        recognizer = await createHandInference(events.signal)
         if (stopped()) {
           closeRecognizer()
           return
@@ -155,29 +165,36 @@ export class HandTracking implements InputSource {
       }
       if (!document.hidden && !blurred) {
         for (const hand of tracks) publish(hand, hand.filter.expire(now))
+        const videoTime = hasVideoFrames ? presentedFrames : video.currentTime
         const freshFrame = !track.muted && !video.paused && video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA &&
-          video.videoWidth > 0 && video.videoHeight > 0 && video.currentTime !== lastVideoTime
+          video.videoWidth > 0 && video.videoHeight > 0 && videoTime !== lastVideoTime
         if (freshFrame) {
           if (now - lastFrameAt >= frameTimeoutMs) darkSince = undefined
-          lastVideoTime = video.currentTime
+          lastVideoTime = videoTime
           lastFrameAt = now
           checkBrightness(now)
           if (modelState === 'idle') void loadModel()
-          if (recognizer && now - lastInference >= inferenceIntervalMs) {
+          if (recognizer && !inferencePending && now - lastInference >= inferenceIntervalMs) {
             lastInference = now
-            try {
-              const observations = associateHands(recognizer.observe(video, now), tracks.map(hand => hand.seen), now)
+            inferencePending = true
+            const requestGeneration = generation
+            void recognizer.observe(video, now).then(observed => {
+              if (stopped() || generation !== requestGeneration) return
+              const sampledAt = performance.now()
+              const observations = associateHands(observed, tracks.map(hand => hand.seen), sampledAt)
+              const calibration = this.calibration()
               for (const [index, hand] of tracks.entries()) {
                 const observation = observations[index]
-                if (observation) hand.seen = { ...observation, side: observation.side ?? hand.seen?.side, at: now }
-                publish(hand, hand.filter.observe(observation, now, this.calibration()))
+                if (observation) hand.seen = { ...observation, side: observation.side ?? hand.seen?.side, at: sampledAt }
+                publish(hand, hand.filter.observe(observation, sampledAt, calibration))
               }
-            } catch (error) {
+            }).catch(error => {
+              if (stopped()) return
               console.warn('Hand recognition stopped:', error)
               reset()
               closeRecognizer()
               modelState = 'inference-error'
-            }
+            }).finally(() => { inferencePending = false })
           }
         }
         if (now - lastFrameAt >= frameTimeoutMs) report('no-frames')
@@ -242,6 +259,7 @@ export class HandTracking implements InputSource {
         this.onPreview(video)
         report('starting')
         lastFrameAt = performance.now()
+        if (hasVideoFrames) videoFrame = video.requestVideoFrameCallback(markVideoFrame)
         frame = requestAnimationFrame(inspect)
         void playVideo()
       } catch (error) {

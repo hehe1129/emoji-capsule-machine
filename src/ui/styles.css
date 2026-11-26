@@ -13,7 +13,7 @@
   --yellow: #ffd330;
   --red: #ff3027;
   --room: #fbf1e6;
-  --floor: #9ed8f6;
+  --floor: #c6e9f8;
   --glass: #d2e9f2;
   --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
   --camera-ease: cubic-bezier(0.77, 0, 0.175, 1);
@@ -164,13 +164,15 @@ button, input, summary { -webkit-tap-highlight-color: transparent; }
 .take:not(:disabled):is(:active, [data-gesture-hover]) { background: #a0deff; }
 .take:active { transform: translateY(2px); box-shadow: inset 0 -2px #338dc2; }
 .print-slot {
-  position: absolute; left: 401px; top: 647px; width: 82px; height: 12px;
+  position: absolute; left: 401px; top: 636px; width: 82px; height: 12px;
   border: 3px solid var(--ink); border-radius: 4px; background: #423033;
 }
 .printing-paper {
-  position: fixed; z-index: 30; pointer-events: none; overflow: hidden; transform-origin: top left;
+  position: fixed; z-index: 30; pointer-events: none; clip-path: inset(0 -40% -40%); transform-origin: top left;
 }
-.printing-paper[data-flying] { box-shadow: 0 6px 18px #1910172b; }
+.printing-paper > .print { transform-origin: top center; }
+.printing-paper[data-flying] { clip-path: none; }
+.printing-paper[data-flying] > .print { box-shadow: 0 6px 18px #19101740; }
 .cabinet-art[data-shaking] { animation: shake 220ms linear infinite; }
 @keyframes shake {
   0%, 100% { transform: translate(0, 0); filter: drop-shadow(0 0 0 transparent); }
@@ -292,25 +294,32 @@ button, input, summary { -webkit-tap-highlight-color: transparent; }
   border: 2px solid var(--ink); border-radius: 5px; background: var(--paper);
 }
 .cursor {
-  position: absolute; z-index: 30; pointer-events: none; translate: -50% -50%;
-  scale: var(--pinch-scale, 1);
-  width: 28px; height: 28px; border: 2px solid var(--ink);
-  outline: 2px solid #fff9ea; border-radius: 50%; transition: scale 85ms linear;
+  position: absolute; left: 0; top: 0; z-index: 30; pointer-events: none;
+  width: 28px; height: 28px; will-change: transform;
 }
-.cursor.pressed { background: #111113; }
+.cursor::before {
+  content: ""; position: absolute; inset: 0; translate: -50% -50%;
+  scale: var(--pinch-scale, 1); transition: scale 45ms linear;
+  border: 2px solid var(--ink); outline: 2px solid #fff9ea; border-radius: 50%;
+}
+.cursor.pressed::before { background: #111113; }
 dialog > .cursor { position: fixed; }
 dialog {
   border: 5px solid var(--ink); border-radius: 14px; padding: 0;
   background: #fff9ef; color: var(--ink); overflow: visible;
 }
 dialog::backdrop { background: #15131988; }
-#souvenir { display: grid; justify-items: center; overflow: visible; }
+#souvenir { border: 0; display: grid; justify-items: center; overflow: visible; }
+#souvenir[data-print-flight] { background: transparent; }
+#souvenir[data-print-flight] :is(.poster-view, .poster-colors, .dialog-controls) { opacity: 0; pointer-events: none; }
+#souvenir[open][data-reveal]::backdrop { animation: poster-dim-in 660ms ease-in-out both; }
+@keyframes poster-dim-in { from { opacity: 0; } to { opacity: 1; } }
 #souvenir:not([open]), #instructions:not([open]) { display: none; }
 .poster-paper { position: relative; isolation: isolate; }
-.poster-rays { position: absolute; inset: 0; pointer-events: none; z-index: -1; }
+.poster-rays { position: absolute; inset: 0; pointer-events: none; z-index: -1; transform-origin: top left; }
 .poster-rays::before {
   content: ""; position: absolute; inset: 0; border-radius: 11px;
-  box-shadow: 0 0 28px 7px #ffe89571, 0 0 62px 13px #ffc85832;
+  box-shadow: 0 0 32px 9px #ffe895a0, 0 0 74px 18px #ffc85852;
 }
 .poster-ray {
   position: absolute; width: clamp(16px, 4.6vmin, 54px); height: 3px;
@@ -331,7 +340,7 @@ dialog::backdrop { background: #15131988; }
   28% { opacity: .95; }
   72% { opacity: 0; transform: translateX(clamp(20px, 4vmin, 48px)) scaleX(1.15); }
 }
-.poster-view { width: min(43dvh, 86vw); aspect-ratio: 5 / 7; border-bottom: 3px solid var(--ink); }
+.poster-view { width: min(43dvh, 86vw); aspect-ratio: 5 / 7; }
 .poster-preview-image { display: block; width: 100%; height: 100%; object-fit: contain; }
 .poster-colors { display: flex; justify-content: center; gap: 11px; padding: 11px 9px 3px; }
 .poster-colors button {

@@ -1,4 +1,5 @@
 import { arena, cabinet, hatchInset, hatchThickness, settingsSchema, type LidSide, type Settings } from '../core/config'
+import { CursorMotion } from '../input/CursorMotion'
 import type { Point, PointerId } from '../input/InputManager'
 import type { HandCalibration } from '../input/GestureFilter'
 import type { HandStatus } from '../input/HandTracking'
@@ -58,6 +59,8 @@ export class UIManager {
   private readonly closeCard = element<HTMLButtonElement>('close-card')
   private readonly posterMessage = element('poster-message')
   private readonly download = element<HTMLAnchorElement>('save-card')
+  readonly cursorMotion = new CursorMotion()
+  private readonly paintedCursors = new Map<PointerId, Point>()
   private readonly cursors = new Map<PointerId, HTMLElement>([
     ['hand-0', element('cursor')], ['hand-1', element('cursor-secondary')],
   ])
@@ -141,6 +144,7 @@ export class UIManager {
     this.souvenir.addEventListener('close', () => {
       this.editor.close()
       delete this.souvenir.dataset.freshPrint
+      delete this.souvenir.dataset.reveal
       onClosePoster()
       if (this.cardUrl) URL.revokeObjectURL(this.cardUrl)
       this.cardUrl = undefined
@@ -221,6 +225,10 @@ export class UIManager {
       [100, 12, -29], [100, 34, -12], [100, 56, 8], [100, 79, 22], [100, 94, 42],
       [91, 100, 54], [63, 100, 82], [33, 100, 101], [7, 100, 133],
       [0, 84, 157], [0, 63, 173], [0, 40, 189], [0, 18, 207],
+      [4, 0, -141], [24, 0, -116], [49, 0, -92], [74, 0, -64], [97, 0, -42],
+      [100, 23, -22], [100, 45, 0], [100, 69, 14], [100, 88, 34],
+      [82, 100, 66], [49, 100, 93], [20, 100, 117],
+      [0, 93, 145], [0, 75, 165], [0, 53, 180], [0, 29, 197], [0, 6, 221],
     ]
     rays.forEach(([x, y, angle], index) => {
       const ray = document.createElement('i')
@@ -250,8 +258,17 @@ export class UIManager {
     this.printing = true
     operator.inert = true
     try {
-      await printPoster(this.printSlot, poster)
+      await printPoster(this.printSlot, poster, this.souvenir, () => {
+        this.souvenir.dataset.reveal = ''
+        this.souvenir.dataset.printFlight = ''
+        this.showEditor(poster)
+        this.closeCard.disabled = true
+        return { view: this.posterView, rays: element('poster-rays') }
+      })
     } finally {
+      if (!this.souvenir.open) this.showEditor(poster)
+      delete this.souvenir.dataset.printFlight
+      this.closeCard.disabled = false
       this.printing = false
       operator.inert = false
     }
@@ -428,6 +445,8 @@ export class UIManager {
   cancelCursor(pointer?: PointerId, point?: Point) {
     for (const id of pointer ? [pointer] : this.cursors.keys()) {
       this.lastButtonAim.delete(id)
+      this.cursorMotion.clear(id)
+      this.paintedCursors.delete(id)
       this.showCursor(id, point)
     }
   }
@@ -449,10 +468,28 @@ export class UIManager {
       this.lastButtonAim.delete(pointer)
       return
     }
-    cursor.style.left = point.x * 100 + '%'
-    cursor.style.top = point.y * 100 + '%'
+    if (!this.cursorMotion.read(pointer, performance.now())) this.positionCursor(pointer, cursor, point)
     cursor.style.setProperty('--pinch-scale', String(1 - 0.56 * (pressed ? 1 : progress)))
     cursor.classList.toggle('pressed', pressed)
+  }
+
+  paintCursors(now: number) {
+    for (const [pointer, cursor] of this.cursors) {
+      if (cursor.hidden) continue
+      const point = this.cursorMotion.read(pointer, now)
+      if (point) this.positionCursor(pointer, cursor, point)
+    }
+  }
+
+  paintedCursor(pointer: PointerId) {
+    return this.cursors.get(pointer)?.hidden ? undefined : this.paintedCursors.get(pointer)
+  }
+
+  private positionCursor(pointer: PointerId, cursor: HTMLElement, point: Point) {
+    this.paintedCursors.set(pointer, point)
+    const width = this.modalOpen ? innerWidth : this.surface.clientWidth
+    const height = this.modalOpen ? innerHeight : this.surface.clientHeight
+    cursor.style.transform = `translate3d(${point.x * width}px, ${point.y * height}px, 0)`
   }
 
   update(shaking: boolean, retained: number, exporting: boolean, hatchOpen: boolean, hatchProgress: number) {

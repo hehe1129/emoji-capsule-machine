@@ -71,7 +71,6 @@ async function start() {
       console.error(error)
     } finally {
       printing = false
-      ui.showEditor(poster)
       refresh()
     }
   }
@@ -162,6 +161,7 @@ async function start() {
   const input = new InputManager(action => {
     const { pointer } = action
     if (action.type === 'cancel') {
+      wall.sweep(pointer)
       cancelAction(pointer)
       if (cameraMode) ui.cancelCursor(pointer, action.position)
       return
@@ -171,6 +171,7 @@ async function start() {
     const hit = ui.locate(action.position, cameraMode ? handAction : undefined, pointer)
     ui.showCursor(pointer, cameraMode ? action.position : undefined, action.pressed, cameraMode ? hit.control : undefined,
       action.pinchProgress)
+    if (cameraMode) wall.sweep(pointer, !ui.camera.locked && !ui.modalOpen ? hit.screen : undefined)
     if (ui.camera.locked) return
     if (action.type === 'grab') {
       const allowAssist = cameraMode && (!hit.control || ui.editor.hasSelection)
@@ -219,7 +220,17 @@ async function start() {
       if (active === 'emoji') app.drag(hit.point, cameraMode, pointer)
       if (active === 'wall') wall.movePan(hit.screen)
     }
-  }, () => cameraMode ? calibration.smoothing : app.settings.smoothing)
+  }, () => cameraMode ? calibration.smoothing : app.settings.smoothing,
+  (pointer, point, at, reset) => {
+    if (reset) ui.cursorMotion.clear(pointer)
+    ui.cursorMotion.sample(pointer, point, at)
+  }, pointer => ui.paintedCursor(pointer))
+
+  ui.surface.addEventListener('pointermove', event => {
+    if (event.pointerType !== 'mouse') return
+    wall.sweep('mouse', !ui.camera.locked && !ui.modalOpen ? { x: event.clientX, y: event.clientY } : undefined)
+  })
+  ui.surface.addEventListener('pointerleave', () => wall.sweep('mouse'))
 
   const mouse = new MouseInput(ui.surface, () => ui.inputBounds())
   let deviceQuery = 0
@@ -288,6 +299,7 @@ async function start() {
   function frame(now: number) {
     const delta = now - previous
     input.update(now)
+    ui.paintCursors(now)
     if (lidSide && lidSide === app.lidSide && nextDrop && now >= nextDrop) {
       nextDrop = now + dropInterval
       if (app.drop(lidSide)) capacityMessage = false

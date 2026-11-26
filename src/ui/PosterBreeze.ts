@@ -58,16 +58,36 @@ export class PosterBreeze {
     for (let index = 0; index < count; index++) {
       const [tile] = idle.splice(Math.floor(Math.random() * idle.length), 1)
       const angle = (2 + Math.random() * 1.5) * (Math.random() < 0.5 ? -1 : 1)
-      const motion = tile.animate([
-        { rotate: '0deg', easing: 'ease-in-out' },
-        { rotate: angle + 'deg', offset: 0.34, easing: 'ease-in-out' },
-        { rotate: -0.45 * angle + 'deg', offset: 0.71, easing: 'ease-in-out' },
-        { rotate: '0deg' },
-      ], { duration: 2800 + Math.random() * 1800 })
-      this.active.set(tile, motion)
-      void motion.finished.catch(() => undefined).finally(() => {
-        if (this.active.get(tile) === motion) this.active.delete(tile)
-      })
+      this.swing(tile, angle, 2800 + Math.random() * 1800)
     }
+  }
+
+  sweep(tile: HTMLElement, direction: number) {
+    if (this.reduced.matches || document.hidden) return
+    const old = this.active.get(tile)
+    const start = Number.parseFloat(getComputedStyle(tile).rotate) || 0
+    if (old) old.cancel()
+    else if (this.active.size >= maxMoving) {
+      const oldest = this.active.keys().next().value
+      if (oldest) {
+        this.active.get(oldest)?.cancel()
+        this.active.delete(oldest)
+      }
+    }
+    this.swing(tile, Math.max(-7, Math.min(7, start + 3.5 * direction)), 1100, start)
+  }
+
+  private swing(tile: HTMLElement, angle: number, duration: number, start = 0) {
+    const motion = tile.animate([
+      { rotate: start + 'deg', easing: 'ease-out' },
+      { rotate: angle + 'deg', offset: 0.24, easing: 'ease-in-out' },
+      { rotate: -0.4 * angle + 'deg', offset: 0.58, easing: 'ease-in-out' },
+      { rotate: '0deg' },
+    ], { duration })
+    this.active.delete(tile)
+    this.active.set(tile, motion)
+    void motion.finished.catch(() => undefined).finally(() => {
+      if (this.active.get(tile) === motion) this.active.delete(tile)
+    })
   }
 }

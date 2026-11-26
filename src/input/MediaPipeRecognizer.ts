@@ -19,11 +19,12 @@ export async function createHandRecognizer() {
     numHands: 2,
     minHandDetectionConfidence: 0.42,
     minHandPresenceConfidence: 0.42,
+    minTrackingConfidence: 0.45,
   })
 
   return {
-    observe(video: HTMLVideoElement, now: number): HandObservation[] {
-      const result = recognizer.recognizeForVideo(video, now)
+    observe(frame: HTMLVideoElement | ImageBitmap, now: number): HandObservation[] {
+      const result = recognizer.recognizeForVideo(frame, now)
       return result.landmarks.flatMap((hand, handIndex): HandObservation[] => {
         if (hand.length < 21) return []
 
@@ -33,20 +34,24 @@ export async function createHandRecognizer() {
           position.x += hand[index].x / palmIndices.length
           position.y += hand[index].y / palmIndices.length
         }
+        const palm = { ...position }
         const thumb = hand[4]
         const index = hand[8]
         position.x = position.x * 0.22 + (thumb.x + index.x) * 0.39
         position.y = position.y * 0.22 + (thumb.y + index.y) * 0.39
-        const points = result.worldLandmarks[handIndex]
-        const world = points?.length >= 21 ? points : undefined
-        const landmarks = world ?? hand
-        const aspect = world ? 1 : video.videoWidth / video.videoHeight
-        const palmSize = Math.max(distance(landmarks[0], landmarks[9], aspect),
-          distance(landmarks[5], landmarks[17], aspect))
-        const pinchRatio = distance(landmarks[4], landmarks[8], aspect) / palmSize
+        const aspect = frame instanceof ImageBitmap ? frame.width / frame.height : frame.videoWidth / frame.videoHeight
+        const projected = (a: number, b: number) => Math.hypot((hand[a].x - hand[b].x) * aspect, hand[a].y - hand[b].y)
+        const palmSize = Math.max(projected(0, 9), projected(5, 17))
+        const screenRatio = projected(4, 8) / palmSize
+        const world = result.worldLandmarks[handIndex]
+        const worldRatio = world?.length >= 21
+          ? distance(world[4], world[8]) / Math.max(distance(world[0], world[9]), distance(world[5], world[17]))
+          : screenRatio
+        // The fingertip projection is steadier than the model's inferred depth at contact.
+        const pinchRatio = screenRatio * 0.78 + Math.min(worldRatio, screenRatio + 0.2) * 0.22
         if (![position.x, position.y, pinchRatio].every(Number.isFinite)) return []
         const handedness = result.handedness[handIndex]?.[0]
-        return [{ position, pinchRatio, side: handedness?.score > 0.60 ? handedness.categoryName : undefined }]
+        return [{ position, palm, pinchRatio, side: handedness?.score > 0.60 ? handedness.categoryName : undefined }]
       })
     },
     close: () => recognizer.close(),

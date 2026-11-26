@@ -7,6 +7,8 @@ export interface EmojiEntity {
   readonly body: Body
   radius: number
   heightScale?: number
+  lidScale?: number
+  waterScale?: number
   compactFlower?: boolean
   retained?: boolean
   spawnRemaining: number
