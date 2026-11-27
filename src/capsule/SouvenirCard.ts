@@ -1,6 +1,6 @@
 import { creditPoster } from '../emoji/artworkCredit'
 import { emojiImageUrl, type EmojiArtwork } from '../emoji/emojiImage'
-import { portrait, posterPalette, posterSize, type Poster } from './PosterLayout'
+import { portrait, posterBackground, posterLabels, posterPalette, posterSize, type Poster } from './PosterLayout'
 
 const ink = '#111113'
 const title = '扭蛋黄'
@@ -33,6 +33,12 @@ export async function createSouvenir(poster: Poster) {
   const colors = posterPalette(poster)
   context.fillStyle = colors.paper
   context.fillRect(0, 0, width, height)
+  if (poster.version === 4) {
+    const background = new Image()
+    background.src = posterBackground(poster.palette, poster.template ?? 0, poster.secondPalette)
+    await background.decode()
+    context.drawImage(background, 0, 0, width, height)
+  }
   context.fillStyle = ink
   context.strokeStyle = ink
   const edition = '#' + poster.id.slice(0, 8).toUpperCase()
@@ -60,7 +66,7 @@ export async function createSouvenir(poster: Poster) {
     context.fillRect(42, 710, 516, 3)
     context.font = '600 26px ' + font
     context.fillText(poster.caption ?? '', 42, 759, 516)
-  } else {
+  } else if (poster.version === 3) {
     context.font = '900 67px ' + font
     context.fillText(title, 27, 81)
     context.textAlign = 'right'
@@ -80,8 +86,29 @@ export async function createSouvenir(poster: Poster) {
     context.save()
     context.translate(x, y)
     context.rotate(tilt * Math.PI / 180)
-    context.drawImage(images[index], -size / 2, -size / 2, size, size)
+    const image = images[index]
+    const longestSide = poster.version === 4 ? Math.max(image.naturalWidth, image.naturalHeight) : 0
+    const width = longestSide ? size * image.naturalWidth / longestSide : size
+    const height = longestSide ? size * image.naturalHeight / longestSide : size
+    context.drawImage(image, -width / 2, -height / 2, width, height)
     context.restore()
+  }
+  if (poster.version === 4) {
+    context.fillStyle = ink
+    context.font = '600 28px ' + font
+    context.textAlign = 'right'
+    context.fillText(poster.caption ?? '', 564, 690, 514)
+    context.textAlign = 'center'
+    context.textBaseline = 'middle'
+    for (const { text, weight, placement } of posterLabels(poster)) {
+      const { x, y, size, tilt } = placement
+      context.save()
+      context.translate(x, y)
+      context.rotate(tilt * Math.PI / 180)
+      context.font = weight + ' ' + size + 'px ' + font
+      context.fillText(text, 0, 0)
+      context.restore()
+    }
   }
   return new Promise<Blob>((resolve, reject) => {
     canvas.toBlob(blob => blob ? resolve(creditPoster(blob)) : reject(new Error('PNG encoding failed')), 'image/png')

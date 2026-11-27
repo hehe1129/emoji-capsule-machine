@@ -1,5 +1,5 @@
 import { emojiImage } from '../emoji/emojiImage'
-import { portrait, posterPalette, posterSize, type Poster, type Sticker } from '../capsule/PosterLayout'
+import { portrait, posterBackground, posterLabels, posterPalette, posterSize, type Placement, type Poster, type Sticker } from '../capsule/PosterLayout'
 import { PosterStore } from '../capsule/PosterStore'
 import type { Point, PointerId } from '../input/InputManager'
 import { roomHorizon } from '../core/config'
@@ -7,11 +7,18 @@ import { PosterBreeze } from './PosterBreeze'
 
 const posterColumns = 15
 
-export function positionSticker(wrapper: HTMLElement, sticker: Sticker) {
+export function positionSticker(wrapper: HTMLElement, sticker: Placement) {
   wrapper.style.left = sticker.x / posterSize.width * 100 + '%'
   wrapper.style.top = sticker.y / posterSize.height * 100 + '%'
   wrapper.style.width = sticker.size / posterSize.width * 100 + '%'
   wrapper.style.transform = 'translate(-50%, -50%) rotate(' + sticker.tilt + 'deg)'
+}
+
+export function positionLabel(wrapper: HTMLElement, placement: Placement) {
+  wrapper.style.left = placement.x / posterSize.width * 100 + '%'
+  wrapper.style.top = placement.y / posterSize.height * 100 + '%'
+  wrapper.style.fontSize = placement.size / posterSize.width * 100 + 'cqw'
+  wrapper.style.transform = 'translate(-50%, -50%) rotate(' + placement.tilt + 'deg)'
 }
 
 function stickerElement(sticker: Sticker) {
@@ -25,7 +32,7 @@ function stickerElement(sticker: Sticker) {
 
 export function posterElement(poster: Poster, editable = false) {
   const print = document.createElement('span')
-  print.className = poster.version === 3 ? 'print print-exhibition' : poster.version === 2 ? 'print print-edition' : 'print'
+  print.className = poster.version === 4 ? 'print print-custom' : poster.version === 3 ? 'print print-exhibition' : poster.version === 2 ? 'print print-edition' : 'print'
   const colors = posterPalette(poster)
   print.style.setProperty('--print-paper', colors.paper)
   if (poster.version === 1 && colors.field) {
@@ -39,6 +46,25 @@ export function posterElement(poster: Poster, editable = false) {
     if (editable) mark.dataset.sticker = String(index)
     print.append(mark)
   })
+  if (poster.version === 4) {
+    print.style.backgroundImage = `url("${posterBackground(poster.palette, poster.template ?? 0, poster.secondPalette)}")`
+    for (const { key, text, placement, weight } of posterLabels(poster)) {
+      const label = document.createElement('span')
+      label.className = 'print-label'
+      label.textContent = text
+      label.style.fontWeight = String(weight)
+      if (editable) label.dataset.label = key
+      positionLabel(label, placement)
+      print.append(label)
+    }
+    if (poster.caption) {
+      const caption = document.createElement('span')
+      caption.className = 'print-caption'
+      caption.textContent = poster.caption
+      print.append(caption)
+    }
+    return print
+  }
   const title = document.createElement('span')
   const number = document.createElement('span')
   title.className = 'print-title'

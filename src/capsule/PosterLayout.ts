@@ -23,30 +23,76 @@ export const galleryArtwork = { left: 26, right: 574, top: 111, bottom: 648 } as
 
 type ReactionState = NonNullable<CapsuleResult['state']>
 
-export interface Sticker {
+export type Placement = { x: number; y: number; size: number; tilt: number }
+export const labelKeys = ['title', 'date', 'number'] as const
+export type LabelKey = typeof labelKeys[number]
+export const posterTemplates = ['纯色', '渐变色', '波点', '条纹'] as const
+const defaultLabels: Record<LabelKey, Placement> = {
+  title: { x: 126, y: 60, size: 67, tilt: 0 },
+  date: { x: 75, y: 785, size: 17, tilt: 0 },
+  number: { x: 518, y: 785, size: 17, tilt: 0 },
+}
+export function posterLabels(poster: Poster) {
+  const text = {
+    title: '扭蛋黄',
+    date: poster.createdAt.slice(0, 10).replaceAll('-', '.'),
+    number: '#' + poster.id.slice(0, 8).toUpperCase(),
+  }
+  return labelKeys.map(key => ({ key, text: text[key], weight: key === 'title' ? 900 : 500,
+    placement: poster.labels?.[key] ?? defaultLabels[key] }))
+}
+
+function mixColors(first: string, second: string) {
+  return '#' + [1, 3, 5].map(index => {
+    const a = Number.parseInt(first.slice(index, index + 2), 16)
+    const b = Number.parseInt(second.slice(index, index + 2), 16)
+    return Math.round((a + b) / 2).toString(16).padStart(2, '0')
+  }).join('')
+}
+
+export function posterBackground(palette: number, template: number, secondPalette?: number) {
+  const first = posterColors[palette].paper
+  const second = secondPalette === undefined ? '#ffffff' : posterColors[secondPalette].paper
+  const background = template === 0 ? (secondPalette === undefined ? first : mixColors(first, second))
+    : template === 2 ? second : first
+  const patterns = [
+    '',
+    `<linearGradient id="p" x2="100%" y2="100%"><stop stop-color="${first}"/><stop offset="1" stop-color="${second}"/></linearGradient>`,
+    `<pattern id="p" width="56" height="56" patternUnits="userSpaceOnUse"><circle cx="28" cy="28" r="9" fill="${first}"/></pattern>`,
+    `<pattern id="p" width="64" height="64" patternUnits="userSpaceOnUse" patternTransform="rotate(28)"><rect width="32" height="64" fill="${second}"/></pattern>`,
+  ]
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 840"><defs>${patterns[template]}</defs><path fill="${background}" d="M0 0h600v840H0z"/>${template ? '<path fill="url(#p)" d="M0 0h600v840H0z"/>' : ''}</svg>`
+  return 'data:image/svg+xml,' + encodeURIComponent(svg)
+}
+
+export interface Sticker extends Placement {
   kind: EmojiKind
   state?: ReactionState
   source?: EmojiKind[]
-  x: number
-  y: number
-  size: number
-  tilt: number
 }
 
 export interface Poster {
-  version: 1 | 2 | 3
+  version: 1 | 2 | 3 | 4
   id: string
   createdAt: string
   palette: number
+  secondPalette?: number
   stickers: Sticker[]
   caption?: string
+  template?: number
+  labels?: Record<LabelKey, Placement>
 }
 
 export function posterPalette(poster: Poster): { paper: string; field?: string } {
   return poster.version === 1 ? legacyColors[poster.palette] : posterColors[poster.palette]
 }
 
-export function moveSticker(sticker: Sticker, x: number, y: number, version: Poster['version'] = 3) {
+export function moveSticker(sticker: Placement, x: number, y: number, version: Poster['version'] = 4) {
+  if (version === 4) {
+    sticker.x = Math.round(Math.max(0, Math.min(posterSize.width, x)))
+    sticker.y = Math.round(Math.max(0, Math.min(posterSize.height, y)))
+    return
+  }
   const area = version === 3 ? galleryArtwork : artworkArea
   const padding = Math.ceil(sticker.size * 0.78)
   sticker.x = Math.round(Math.max(area.left + padding, Math.min(area.right - padding, x)))
@@ -108,10 +154,13 @@ export function createPoster(items: readonly CapsuleResult[], variation = 0, pre
   const composition = layouts[ordered.length - 1] ?? (ordered.length <= largerLayout.length ? largerLayout : undefined)
   const mirrored = Math.random() < 0.5
   return {
-    version: 3,
+    version: 4,
+    template: previous?.template ?? 0,
+    labels: previous?.labels ?? { title: { ...defaultLabels.title }, date: { ...defaultLabels.date }, number: { ...defaultLabels.number } },
     id: previous?.id ?? crypto.randomUUID(),
     createdAt: previous?.createdAt ?? new Date().toISOString(),
     palette: previous?.palette ?? Math.floor(Math.random() * posterColors.length),
+    secondPalette: previous?.secondPalette,
     caption: writeCaption(items, variation),
     stickers: ordered.map((item, index) => {
       const row = Math.floor(index / columns)
@@ -135,7 +184,7 @@ export function createPoster(items: readonly CapsuleResult[], variation = 0, pre
       }
       const layoutX = mirrored !== (layoutVariant % 2 === 1) ? 600 - x : x
       moveSticker(sticker, layoutX + [0, -29, 22, 41][layoutVariant] * (index % 2 ? -1 : 1),
-        y + [0, 48, -43, 29][layoutVariant] * (index % 2 ? -1 : 1))
+        y + [0, 48, -43, 29][layoutVariant] * (index % 2 ? -1 : 1), 3)
       return sticker
     }),
   }
@@ -152,8 +201,8 @@ function hasOnly(value: object, keys: string[]) {
 export function isPoster(value: unknown): value is Poster {
   if (!value || typeof value !== 'object') return false
   const p = value as Partial<Poster>
-  if (!hasOnly(p, ['version', 'id', 'createdAt', 'palette', 'stickers', 'caption']) ||
-    (p.version !== 1 && p.version !== 2 && p.version !== 3) || typeof p.id !== 'string' ||
+  if (!hasOnly(p, ['version', 'id', 'createdAt', 'palette', 'stickers', 'caption', 'template', 'labels', 'secondPalette']) ||
+    (p.version !== 1 && p.version !== 2 && p.version !== 3 && p.version !== 4) || typeof p.id !== 'string' ||
     !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(p.id) ||
     typeof p.createdAt !== 'string' || !/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z$/.test(p.createdAt) ||
     !Number.isFinite(Date.parse(p.createdAt)) ||
@@ -161,15 +210,24 @@ export function isPoster(value: unknown): value is Poster {
     p.palette >= (p.version === 1 ? legacyColors.length : p.version === 2 ? 5 : posterColors.length) ||
     (p.version === 1 && p.caption !== undefined) ||
     (p.version !== 1 && (typeof p.caption !== 'string' || !p.caption.trim() ||
-      /[\x00-\x1f]/.test(p.caption) || Array.from(p.caption).length > (p.version === 3 ? 10 : 20))) ||
+      /[\x00-\x1f]/.test(p.caption) || Array.from(p.caption).length > (p.version >= 3 ? 10 : 20))) ||
     !Array.isArray(p.stickers) || !p.stickers.length || p.stickers.length > 500) return false
+  if (p.version === 4) {
+    if (p.secondPalette !== undefined && (!Number.isInteger(p.secondPalette) ||
+      p.secondPalette < 0 || p.secondPalette >= posterColors.length || p.secondPalette === p.palette)) return false
+    if (typeof p.template !== 'number' || !Number.isInteger(p.template) || p.template < 0 || p.template >= posterTemplates.length ||
+      !p.labels || !hasOnly(p.labels, [...labelKeys]) || !labelKeys.every(key => {
+        const value = p.labels?.[key]
+        return !!value && hasOnly(value, ['x', 'y', 'size', 'tilt']) && isPlacement(value)
+      })) return false
+  } else if (p.template !== undefined || p.labels !== undefined || p.secondPalette !== undefined) return false
   return p.stickers.every(s => {
     if (!s || !hasOnly(s, ['kind', 'state', 'source', 'x', 'y', 'size', 'tilt']) ||
       !isKind(s.kind) || ![s.x, s.y, s.size, s.tilt].every(Number.isInteger) ||
-      s.size < 12 || s.size > 430 || s.x < 26 || s.x > 574 || s.y < 111 || s.y > 700 ||
-      Math.abs(s.tilt) > (p.version === 1 ? 16 : p.version === 2 ? 41 : 180)) return false
+      (p.version === 4 ? !isPlacement(s) : (s.size < 12 || s.size > 430 || s.x < 26 || s.x > 574 || s.y < 111 || s.y > 700 ||
+      Math.abs(s.tilt) > (p.version === 1 ? 16 : p.version === 2 ? 41 : 180)))) return false
     if (p.version === 1 && (s.x < 40 || s.x > 560 || s.y < 130)) return false
-    if (p.version !== 1) {
+    if (p.version === 2 || p.version === 3) {
       const area = p.version === 3 ? galleryArtwork : artworkArea
       const padding = Math.ceil(s.size * 0.78)
       if (s.size > 296 || s.x - padding < area.left || s.x + padding > area.right ||
@@ -181,4 +239,10 @@ export function isPoster(value: unknown): value is Poster {
       Object.entries(s.state).every(([key, count]) => stateKeys.includes(key as typeof stateKeys[number]) &&
         Number.isSafeInteger(count) && count >= 1))
   })
+}
+
+function isPlacement(value: Placement) {
+  return [value.x, value.y, value.size, value.tilt].every(Number.isInteger) &&
+    value.x >= 0 && value.x <= posterSize.width && value.y >= 0 && value.y <= posterSize.height &&
+    value.size >= 12 && value.size <= 296 && Math.abs(value.tilt) <= 180
 }

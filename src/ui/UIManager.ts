@@ -52,7 +52,7 @@ export class UIManager {
   private readonly gate = element('retention-gate')
   private readonly souvenir = element<HTMLDialogElement>('souvenir')
   private readonly posterView = element('poster-view')
-  readonly editor = new PosterEditor(this.posterView, element('poster-colors'))
+  readonly editor = new PosterEditor(this.posterView, element('poster-colors'), element('poster-templates'))
   private readonly confirm = element<HTMLButtonElement>('confirm-card')
   private readonly reroll = element<HTMLButtonElement>('reroll-card')
   private readonly pinCard = element<HTMLButtonElement>('pin-card')
@@ -438,7 +438,7 @@ export class UIManager {
         if (Math.hypot(dx, dy) <= buttonGraceDistance) control = aim.control
       }
     }
-    const sticker = hit?.closest<HTMLElement>('[data-sticker]') ?? undefined
+    const sticker = hit?.closest<HTMLElement>('[data-sticker], [data-label]') ?? undefined
     return { point, inside, control, screen: { x, y }, sticker, insideGallery, machineBackdrop, posterBackdrop }
   }
 
