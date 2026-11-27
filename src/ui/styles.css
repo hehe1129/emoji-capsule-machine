@@ -379,7 +379,10 @@ dialog::backdrop { background: #15131988; }
 }
 
 
-.print-custom { background-size: 100% 100%; isolation: isolate; }
+.print-custom {
+  background-size: cover; background-position: center; background-repeat: no-repeat;
+  isolation: isolate;
+}
 .print-custom .print-caption { right: 6%; top: 79.5%; position: absolute; font-size: 4.67cqw; font-weight: 600; text-align: right; z-index: 600; pointer-events: none; }
 .print-label { position: absolute; line-height: 1; white-space: nowrap; z-index: 601; }
 .print-editor [data-label] { cursor: grab; touch-action: none; }
