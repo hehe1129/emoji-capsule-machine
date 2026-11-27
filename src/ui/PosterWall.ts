@@ -216,13 +216,6 @@ export class PosterWall {
   stopPan() {
     this.pan = undefined
     delete this.viewport.dataset.panning
-    const styles = this.grid.style
-    const column = parseFloat(styles.getPropertyValue('--poster-focus-column'))
-    const row = parseFloat(styles.getPropertyValue('--poster-focus-row'))
-    if (column && row) this.viewport.scrollTo(
-      Math.round(this.viewport.scrollLeft / column) * column,
-      Math.round(this.viewport.scrollTop / row) * row,
-    )
   }
 
   layout() {
