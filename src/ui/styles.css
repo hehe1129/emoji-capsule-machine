@@ -208,9 +208,9 @@ button, input, summary { -webkit-tap-highlight-color: transparent; }
 }
 .surface[data-view="wall"] .poster-grid {
   width: var(--poster-focus-field); min-width: var(--poster-focus-field);
-  grid-template-columns: repeat(var(--poster-columns, 15), var(--poster-focus-column));
-  grid-auto-rows: var(--poster-focus-row);
-  gap: 0;
+  grid-template-columns: repeat(var(--poster-columns, 15), var(--poster-focus-width));
+  grid-auto-rows: calc(var(--poster-focus-row) - var(--poster-focus-gap));
+  gap: var(--poster-focus-gap);
   place-items: center;
   padding: var(--poster-focus-block) var(--poster-focus-pad);
   margin-left: 0;
@@ -413,11 +413,12 @@ dialog::backdrop { background: #15131988; }
 .poster-like-count, .poster-like {
   position: absolute; right: 0; top: 0; z-index: 4;
   display: inline-flex; align-items: center; gap: .3em;
-  color: var(--ink); background: #fff9ee; font: 700 0.75rem/1 "Source Han Sans", sans-serif;
+  color: var(--ink); background: transparent; font: 700 0.75rem/1 "Source Han Sans", sans-serif;
   font-variant-numeric: tabular-nums; white-space: nowrap;
   padding: .26em .38em; border-bottom-left-radius: .34em;
 }
 .poster-like-count { font-size: clamp(6px, .72vw, 11px); pointer-events: none; }
-.poster-like { inset: 5px 5px auto auto; border: 2px solid var(--ink); border-radius: 5px; padding: .37em .48em; font-size: clamp(12px, 2vmin, 20px); }
+.poster-like { inset: 5px 5px auto auto; border: 0; border-radius: 0; padding: .37em .48em; font-size: clamp(12px, 2vmin, 20px); }
 :is(.poster-like-count, .poster-like) > :first-child { color: #d32448; }
-.poster-like:is(:hover, [data-gesture-hover]) { background: #ffd8e0; }
+:is(.poster-like-count, .poster-like) { paint-order: stroke fill; -webkit-text-stroke: .16em #fff8ea; }
+.poster-like:is(:hover, [data-gesture-hover]) > :first-child { color: #fa3261; }

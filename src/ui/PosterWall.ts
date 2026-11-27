@@ -227,11 +227,13 @@ export class PosterWall {
 
   layout() {
     const { clientWidth: width, clientHeight: height } = this.surface
-    const base = Math.max(48, width * 0.093)
+    const horizon = roomHorizon(width, height)
+    // Six complete rows fit inside the hundred-piece public exhibition.
+    const base = Math.max(48, width * 0.093, (horizon - 52) / (6 * 1.045 - .135))
     const poster = base * 0.65
     const gap = base * 0.45 * 0.3
     const padding = Math.max(52, gap * 0.65)
-    const rows = Math.max(1, Math.ceil((roomHorizon(width, height) - padding + gap) / (poster * 1.4 + gap)))
+    const rows = Math.max(1, Math.ceil((horizon - padding + gap) / (poster * 1.4 + gap)))
     this.showcaseCount = posterColumns * (rows + 1)
     this.grid.style.setProperty('--poster-width', poster + 'px')
     this.grid.style.setProperty('--poster-gap', gap + 'px')
@@ -240,14 +242,17 @@ export class PosterWall {
     this.grid.style.setProperty('--poster-field-width', (posterColumns * (poster + gap) - gap) + 'px')
     const edgeX = this.surface.querySelector('.wall-edge-left')?.getBoundingClientRect().width ?? 0
     const edgeY = this.surface.querySelector('.wall-edge-top')?.getBoundingClientRect().height ?? 0
-    const stepX = Math.max(32, (width - edgeX * 2) / 4)
-    const stepY = Math.max(44, (height - edgeY * 2) / 4)
+    const scale = Math.max(1.2, Math.min((width - edgeX * 2) / (4 * (poster + gap)),
+      (height - edgeY * 2) / (4 * (poster * 1.4 + gap))))
+    const focusWidth = poster * scale
+    const focusGap = gap * scale
     this.grid.style.setProperty('--poster-focus-pad', edgeX + 'px')
     this.grid.style.setProperty('--poster-focus-block', edgeY + 'px')
-    this.grid.style.setProperty('--poster-focus-column', stepX + 'px')
-    this.grid.style.setProperty('--poster-focus-row', stepY + 'px')
-    this.grid.style.setProperty('--poster-focus-width', Math.min(stepX * .92, stepY * .92 / 1.4) + 'px')
-    this.grid.style.setProperty('--poster-focus-field', (stepX * posterColumns + edgeX * 2) + 'px')
+    this.grid.style.setProperty('--poster-focus-column', (focusWidth + focusGap) + 'px')
+    this.grid.style.setProperty('--poster-focus-row', (focusWidth * 1.4 + focusGap) + 'px')
+    this.grid.style.setProperty('--poster-focus-width', focusWidth + 'px')
+    this.grid.style.setProperty('--poster-focus-gap', focusGap + 'px')
+    this.grid.style.setProperty('--poster-focus-field', (focusWidth * posterColumns + focusGap * (posterColumns - 1) + edgeX * 2) + 'px')
     this.render()
   }
 

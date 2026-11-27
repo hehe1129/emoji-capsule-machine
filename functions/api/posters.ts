@@ -1,4 +1,5 @@
 import { archivedPosterIds } from './archivedPosterIds'
+import { initialPosterLikes } from './initialPosterLikes'
 import { isPoster, type Poster } from '../../src/capsule/PosterLayout'
 
 type Statement = {
@@ -12,6 +13,7 @@ type Context = { env: Environment; request: Request }
 const pageSize = 24
 const maxBytes = 256000
 const archived = JSON.stringify(archivedPosterIds)
+const initialLikes: Readonly<Record<string, number>> = initialPosterLikes
 
 const response = (data: unknown, status = 200) => Response.json(data, {
   status,
@@ -33,7 +35,7 @@ export async function onRequestGet({ env, request }: Context) {
     return response({
       mode: 'shared',
       items: results.slice(0, pageSize).map(row => JSON.parse(row.layout)),
-      likes: Object.fromEntries(results.slice(0, pageSize).map(row => [row.id, row.likes])),
+      likes: Object.fromEntries(results.slice(0, pageSize).map(row => [row.id, row.likes + (initialLikes[row.id] ?? 0)])),
       next: results.length > pageSize ? results[pageSize - 1].seq : undefined,
     })
   } catch {
@@ -75,7 +77,7 @@ export async function onRequestPost({ env, request }: Context) {
          ON CONFLICT(id) DO UPDATE SET layout = CAST(posters.layout AS INTEGER) + 1
          RETURNING CAST(layout AS INTEGER) AS count`,
       ).bind(like, archived).first<{ count: number }>()
-      return row ? response({ mode: 'shared', count: row.count }) : response({ error: 'Poster not found' }, 404)
+      return row ? response({ mode: 'shared', count: row.count + (initialLikes[like] ?? 0) }) : response({ error: 'Poster not found' }, 404)
     } catch { return response({ error: 'Likes unavailable' }, 503) }
   }
   if (!request.headers.get('Content-Type')?.startsWith('application/json')) {
