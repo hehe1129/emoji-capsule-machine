@@ -242,8 +242,8 @@ export class PosterWall {
     this.grid.style.setProperty('--poster-field-width', (posterColumns * (poster + gap) - gap) + 'px')
     const edgeX = this.surface.querySelector('.wall-edge-left')?.getBoundingClientRect().width ?? 0
     const edgeY = this.surface.querySelector('.wall-edge-top')?.getBoundingClientRect().height ?? 0
-    const scale = Math.max(1.2, Math.min((width - edgeX * 2) / (4 * (poster + gap)),
-      (height - edgeY * 2) / (4 * (poster * 1.4 + gap))))
+    const scale = Math.max(2.4, Math.min((width - edgeX * 2) / (2 * (poster + gap)),
+      (height - edgeY * 2) / (2 * (poster * 1.4 + gap))))
     const focusWidth = poster * scale
     const focusGap = gap * scale
     this.grid.style.setProperty('--poster-focus-pad', edgeX + 'px')

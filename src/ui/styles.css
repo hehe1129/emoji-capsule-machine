@@ -407,7 +407,7 @@ dialog::backdrop { background: #15131988; }
 }
 
 
-.print-custom[data-dark-palette] .print-label { color: #fff; -webkit-text-stroke: 0.105em #17171b; paint-order: stroke fill; }
+.print-custom[data-dark-palette] .print-label { color: #fff; }
 
 
 .poster-like-count, .poster-like {
@@ -418,7 +418,8 @@ dialog::backdrop { background: #15131988; }
   padding: .26em .38em; border-bottom-left-radius: .34em;
 }
 .poster-like-count { font-size: clamp(6px, .72vw, 11px); pointer-events: none; }
+.surface[data-view="wall"] .poster-like-count { font-size: max(6px, calc(var(--poster-focus-width) * .065)); }
 .poster-like { inset: 5px 5px auto auto; border: 0; border-radius: 0; padding: .37em .48em; font-size: clamp(12px, 2vmin, 20px); }
 :is(.poster-like-count, .poster-like) > :first-child { color: #d32448; }
-:is(.poster-like-count, .poster-like) { paint-order: stroke fill; -webkit-text-stroke: .16em #fff8ea; }
+:is(.poster-tile, .poster-paper):has(.print[data-dark-palette]) :is(.poster-like-count, .poster-like) { color: #fff; }
 .poster-like:is(:hover, [data-gesture-hover]) > :first-child { color: #fa3261; }
