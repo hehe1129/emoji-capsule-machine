@@ -66,16 +66,16 @@ export class ExhibitCamera {
     this.world.dataset.transition = ''
     this.layout()
     this.onChange()
-    if (view === 'wall') {
-      const bounds = this.viewport.getBoundingClientRect()
-      const target = focus?.getBoundingClientRect()
-      this.viewport.scrollTo(
-        target ? target.left + target.width / 2 - bounds.left - bounds.width / 2 : (this.viewport.scrollWidth - bounds.width) / 2,
-        target ? target.top + target.height / 2 - bounds.top - bounds.height / 2 : 0,
-      )
-    } else if (previous === 'wall') {
-      this.viewport.scrollTo(0, 0)
+    const alignWall = () => {
+      const index = poster ? Array.from(this.grid.children).indexOf(poster) : 0
+      const columns = parseFloat(this.grid.style.getPropertyValue('--poster-columns')) || 15
+      const dx = parseFloat(this.grid.style.getPropertyValue('--poster-focus-column')) || 0
+      const dy = parseFloat(this.grid.style.getPropertyValue('--poster-focus-row')) || 0
+      this.viewport.scrollTo(Math.max(0, index % columns - 1) * dx,
+        Math.max(0, Math.floor(index / columns) - 1) * dy)
     }
+    if (view === 'wall') alignWall()
+    else if (previous === 'wall') this.viewport.scrollTo(0, 0)
     if (!matchMedia('(prefers-reduced-motion: reduce)').matches) {
       const timing = { duration: cameraTime, easing: cameraEase }
       const motion = [
@@ -97,6 +97,14 @@ export class ExhibitCamera {
       await Promise.allSettled(motion.map(animation => animation.finished))
     }
     delete this.world.dataset.transition
+    if (view === 'wall') {
+      // Apply the final scroll once the focused grid has its full scrollable dimensions.
+      await new Promise<void>(resolve => requestAnimationFrame(() => {
+        this.grid.getBoundingClientRect()
+        alignWall()
+        resolve()
+      }))
+    }
     delete this.surface.dataset.navigation
     this.locked = false
     this.onChange()

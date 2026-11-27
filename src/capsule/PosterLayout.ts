@@ -17,6 +17,7 @@ export const posterColors = [
   { name: '淡蓝色', paper: '#c9e2f0' },
   { name: '紫色', paper: '#ddd0ef' },
   { name: '亮黄色', paper: '#ffed16' },
+  { name: '黑色', paper: '#17171b' },
 ] as const
 export const artworkArea = { left: 42, right: 558, top: 142, bottom: 688 } as const
 export const galleryArtwork = { left: 26, right: 574, top: 111, bottom: 648 } as const
@@ -24,22 +25,28 @@ export const galleryArtwork = { left: 26, right: 574, top: 111, bottom: 648 } as
 type ReactionState = NonNullable<CapsuleResult['state']>
 
 export type Placement = { x: number; y: number; size: number; tilt: number }
-export const labelKeys = ['title', 'date', 'number'] as const
+export const labelKeys = ['title', 'date', 'number', 'caption'] as const
 export type LabelKey = typeof labelKeys[number]
 export const posterTemplates = ['纯色', '渐变色', '波点', '条纹'] as const
 const defaultLabels: Record<LabelKey, Placement> = {
   title: { x: 126, y: 60, size: 67, tilt: 0 },
   date: { x: 75, y: 785, size: 17, tilt: 0 },
   number: { x: 518, y: 785, size: 17, tilt: 0 },
+  caption: { x: 495, y: 677, size: 28, tilt: 0 },
 }
 export function posterLabels(poster: Poster) {
   const text = {
     title: '扭蛋黄',
     date: poster.createdAt.slice(0, 10).replaceAll('-', '.'),
     number: '#' + poster.id.slice(0, 8).toUpperCase(),
+    caption: poster.caption ?? '',
   }
-  return labelKeys.map(key => ({ key, text: text[key], weight: key === 'title' ? 900 : 500,
-    placement: poster.labels?.[key] ?? defaultLabels[key] }))
+  return labelKeys.filter(key => text[key]).map(key => ({
+    key, text: text[key], weight: key === 'title' ? 900 : key === 'caption' ? 600 : 500,
+    placement: poster.labels?.[key] ?? (key === 'caption'
+      ? { ...defaultLabels.caption, x: 564 - Array.from(text[key]).length * 14 }
+      : { ...defaultLabels[key] }),
+  }))
 }
 
 function mixColors(first: string, second: string) {
@@ -80,7 +87,7 @@ export interface Poster {
   stickers: Sticker[]
   caption?: string
   template?: number
-  labels?: Record<LabelKey, Placement>
+  labels?: Record<Exclude<LabelKey, 'caption'>, Placement> & { caption?: Placement }
 }
 
 export function posterPalette(poster: Poster): { paper: string; field?: string } {
@@ -128,7 +135,16 @@ export function portrait(kind: EmojiKind, state?: ReactionState): { kind: EmojiA
   return { kind, tilt: 0 }
 }
 
+export function refreshPosterCaption(poster: Poster, items: readonly CapsuleResult[], variation: number) {
+  const placement = posterLabels(poster).find(label => label.key === 'caption')?.placement
+  if (placement && poster.labels) poster.labels.caption = { ...placement }
+  poster.caption = writeCaption(items, variation)
+}
+
 export function createPoster(items: readonly CapsuleResult[], variation = 0, previous?: Poster): Poster {
+  const palette = previous?.palette ?? Math.floor(Math.random() * posterColors.length)
+  const alternate = Math.floor(Math.random() * (posterColors.length - 1))
+  const secondPalette = previous ? previous.secondPalette : alternate + Number(alternate >= palette)
   const ordered = [...items]
   for (let index = ordered.length - 1; index > 0; index--) {
     const other = Math.floor(Math.random() * (index + 1))
@@ -155,12 +171,12 @@ export function createPoster(items: readonly CapsuleResult[], variation = 0, pre
   const mirrored = Math.random() < 0.5
   return {
     version: 4,
-    template: previous?.template ?? 0,
+    template: previous?.template ?? Math.floor(Math.random() * posterTemplates.length),
     labels: previous?.labels ?? { title: { ...defaultLabels.title }, date: { ...defaultLabels.date }, number: { ...defaultLabels.number } },
     id: previous?.id ?? crypto.randomUUID(),
     createdAt: previous?.createdAt ?? new Date().toISOString(),
-    palette: previous?.palette ?? Math.floor(Math.random() * posterColors.length),
-    secondPalette: previous?.secondPalette,
+    palette,
+    secondPalette,
     caption: writeCaption(items, variation),
     stickers: ordered.map((item, index) => {
       const row = Math.floor(index / columns)
@@ -218,7 +234,8 @@ export function isPoster(value: unknown): value is Poster {
     if (typeof p.template !== 'number' || !Number.isInteger(p.template) || p.template < 0 || p.template >= posterTemplates.length ||
       !p.labels || !hasOnly(p.labels, [...labelKeys]) || !labelKeys.every(key => {
         const value = p.labels?.[key]
-        return !!value && hasOnly(value, ['x', 'y', 'size', 'tilt']) && isPlacement(value)
+        return key === 'caption' && value === undefined || !!value &&
+          hasOnly(value, ['x', 'y', 'size', 'tilt']) && isPlacement(value)
       })) return false
   } else if (p.template !== undefined || p.labels !== undefined || p.secondPalette !== undefined) return false
   return p.stickers.every(s => {

@@ -8,7 +8,7 @@ import { browserCameraCapture } from './input/CameraCapture'
 import { SceneRenderer } from './render/SceneRenderer'
 import { UIManager } from './ui/UIManager'
 import { PosterWall } from './ui/PosterWall'
-import { createPoster, type Poster } from './capsule/PosterLayout'
+import { createPoster, refreshPosterCaption, type Poster } from './capsule/PosterLayout'
 import type { CapsuleResult } from './capsule/CapsuleResult'
 import { createSouvenir } from './capsule/SouvenirCard'
 import './ui/styles.css'
@@ -28,6 +28,7 @@ async function start() {
     ? examples.map((kinds, index) => ({
       ...createPoster(kinds.map((kind, entityId) => ({ kind, entityId }))),
       palette: [0, 5, 2, 3][index],
+      secondPalette: [3, 1, 0, 4][index],
     }))
     : []
   const wall = new PosterWall(ui.gallery, ui.surface, async (poster, tile) => {
@@ -39,7 +40,9 @@ async function start() {
     if (ui.camera.view !== 'wall') return
     try {
       const png = await createSouvenir(poster)
-      if (ui.camera.view === 'wall' && !ui.modalOpen) ui.showCard(png)
+      if (ui.camera.view === 'wall' && !ui.modalOpen) ui.showCard(png, false, {
+        id: poster.id, count: wall.store.likes(poster.id), add: () => wall.like(poster.id),
+      })
     } catch {
       ui.report('海报暂时无法打开，请重试。')
     }
@@ -78,7 +81,7 @@ async function start() {
   function rerollPoster() {
     if (!draft || draft.png || exporting || printing) return
     draft.variation++
-    draft.poster = createPoster(draft.items, draft.variation, draft.poster)
+    refreshPosterCaption(draft.poster, draft.items, draft.variation)
     ui.showEditor(draft.poster)
   }
 

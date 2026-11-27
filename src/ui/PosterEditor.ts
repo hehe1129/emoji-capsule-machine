@@ -114,7 +114,7 @@ export class PosterEditor {
     if (poster.version === 4) {
       for (const { key, text, placement } of posterLabels(poster)) {
         const node = print.querySelector<HTMLElement>('[data-label="' + key + '"]')!
-        this.items.set(node, placement)
+        this.items.set(node, poster.labels![key] ??= { ...placement })
         node.tabIndex = 0
         node.setAttribute('aria-label', text + '，方向键移动，加减键缩放，方括号键旋转')
       }
@@ -167,6 +167,7 @@ export class PosterEditor {
       button.dataset.colorOrder = index === palette ? '1' : index === secondPalette ? '2' : ''
     })
     this.print.style.setProperty('--print-paper', posterColors[palette].paper)
+    this.print.toggleAttribute('data-dark-palette', palette === 6 || secondPalette === 6)
     if (this.poster.version === 4) this.print.style.backgroundImage = `url("${posterBackground(palette, template, secondPalette)}")`
     this.templates.forEach((button, index) => {
       button.setAttribute('aria-pressed', String(index === template))

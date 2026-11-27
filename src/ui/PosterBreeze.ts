@@ -6,6 +6,7 @@ export class PosterBreeze {
   private readonly reduced = matchMedia('(prefers-reduced-motion: reduce)')
   private readonly observer: IntersectionObserver
   private timer?: number
+  private swingOrder = 0
 
   constructor(viewport: HTMLElement) {
     this.observer = new IntersectionObserver(entries => {
@@ -20,7 +21,10 @@ export class PosterBreeze {
       if (document.hidden || this.reduced.matches) {
         window.clearTimeout(this.timer)
         this.timer = undefined
-        for (const motion of this.active.values()) motion.cancel()
+        for (const [tile, motion] of this.active) {
+          motion.cancel()
+          tile.style.removeProperty('z-index')
+        }
         this.active.clear()
       } else {
         this.schedule()
@@ -40,6 +44,7 @@ export class PosterBreeze {
     this.visible.delete(tile)
     this.active.get(tile)?.cancel()
     this.active.delete(tile)
+    tile.style.removeProperty('z-index')
   }
 
   private schedule() {
@@ -72,9 +77,10 @@ export class PosterBreeze {
       if (oldest) {
         this.active.get(oldest)?.cancel()
         this.active.delete(oldest)
+        oldest.style.removeProperty('z-index')
       }
     }
-    this.swing(tile, Math.max(-7, Math.min(7, start + 3.5 * direction)), 1100, start)
+    this.swing(tile, direction * 5, 1100, start)
   }
 
   private swing(tile: HTMLElement, angle: number, duration: number, start = 0) {
@@ -84,10 +90,14 @@ export class PosterBreeze {
       { rotate: -0.4 * angle + 'deg', offset: 0.58, easing: 'ease-in-out' },
       { rotate: '0deg' },
     ], { duration })
-    this.active.delete(tile)
+    if (!this.active.has(tile)) tile.style.zIndex = String(2147483647 - this.swingOrder++)
     this.active.set(tile, motion)
     void motion.finished.catch(() => undefined).finally(() => {
-      if (this.active.get(tile) === motion) this.active.delete(tile)
+      if (this.active.get(tile) === motion) {
+        this.active.delete(tile)
+        tile.style.removeProperty('z-index')
+        if (!this.active.size) this.swingOrder = 0
+      }
     })
   }
 }

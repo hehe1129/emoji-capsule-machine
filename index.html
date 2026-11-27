@@ -91,17 +91,18 @@
     <div class="poster-paper">
       <div id="poster-rays" class="poster-rays" aria-hidden="true"></div>
       <div id="poster-view" class="poster-view"></div>
+      <button id="poster-like" class="poster-like" type="button" data-native data-hand hidden><span aria-hidden="true">♥</span> <span data-count>0000</span></button>
       <div id="poster-templates" class="poster-colors poster-templates" role="group" aria-label="海报模板" hidden></div>
     </div>
     <div id="poster-colors" class="poster-colors" role="group" aria-label="海报底色" hidden></div>
     <p id="poster-message" class="poster-message" role="status" hidden></p>
     <div class="dialog-controls">
       <button id="close-card" type="button" data-native data-hand aria-label="关闭海报"><span aria-hidden="true">×</span></button>
-      <button id="confirm-card" type="button" data-native data-hand hidden>生成海报</button>
-      <button id="reroll-card" type="button" data-native data-hand aria-label="重新生成排版" title="重新生成排版" hidden>
+      <button id="confirm-card" type="button" data-native data-hand hidden>生成贴纸</button>
+      <button id="reroll-card" type="button" data-native data-hand aria-label="更换心情短语" title="更换心情短语" hidden>
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 10a8 8 0 1 0-1.4 7M20 4v6h-6"/></svg>
       </button>
-      <button id="pin-card" type="button" data-native data-hand hidden>粘贴海报</button>
+      <button id="pin-card" type="button" data-native data-hand hidden>粘贴贴纸</button>
       <a id="save-card" data-native data-hand download="扭蛋黄-纪念海报.png" hidden>下载 PNG</a>
     </div>
   </dialog>
@@ -111,7 +112,7 @@
       <h1>扭蛋黄</h1>
       <p>用鼠标或摄像头捏合选中扭蛋机和海报墙。</p>
       <p>按住顶盖投放 Emoji。把 Emoji 拖近顶盖，可以从开口拿出或放回。</p>
-      <p>下拉摇杆抽取，点「带走!」生成海报，再下载或贴到墙上。</p>
+      <p>下拉摇杆抽取，点「带走!」生成贴纸，再下载或贴到墙上。</p>
       <p>点海报进入墙面近景。按住中间的空白墙面拖动视角，点四周虚化区域返回。</p>
       <p id="archive-mode" role="status"></p>
     </div>

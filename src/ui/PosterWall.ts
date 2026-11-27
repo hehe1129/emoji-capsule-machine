@@ -1,6 +1,6 @@
 import { emojiImage } from '../emoji/emojiImage'
 import { portrait, posterBackground, posterLabels, posterPalette, posterSize, type Placement, type Poster, type Sticker } from '../capsule/PosterLayout'
-import { PosterStore } from '../capsule/PosterStore'
+import { fourDigits, PosterStore } from '../capsule/PosterStore'
 import type { Point, PointerId } from '../input/InputManager'
 import { roomHorizon } from '../core/config'
 import { PosterBreeze } from './PosterBreeze'
@@ -47,6 +47,7 @@ export function posterElement(poster: Poster, editable = false) {
     print.append(mark)
   })
   if (poster.version === 4) {
+    print.toggleAttribute('data-dark-palette', poster.palette === 6 || poster.secondPalette === 6)
     print.style.backgroundImage = `url("${posterBackground(poster.palette, poster.template ?? 0, poster.secondPalette)}")`
     for (const { key, text, placement, weight } of posterLabels(poster)) {
       const label = document.createElement('span')
@@ -56,12 +57,6 @@ export function posterElement(poster: Poster, editable = false) {
       if (editable) label.dataset.label = key
       positionLabel(label, placement)
       print.append(label)
-    }
-    if (poster.caption) {
-      const caption = document.createElement('span')
-      caption.className = 'print-caption'
-      caption.textContent = poster.caption
-      print.append(caption)
     }
     return print
   }
@@ -166,6 +161,13 @@ export class PosterWall {
     this.render()
   }
 
+  async like(id: string) {
+    const count = await this.store.like(id)
+    const counter = this.tiles.get(id)?.querySelector('[data-count]')
+    if (counter) counter.textContent = fourDigits(count)
+    return count
+  }
+
   sweep(pointer: PointerId, point?: Point) {
     const view = this.surface.dataset.view
     if (!point || (view !== 'overview' && view !== 'wall') || this.pan) {
@@ -214,6 +216,13 @@ export class PosterWall {
   stopPan() {
     this.pan = undefined
     delete this.viewport.dataset.panning
+    const styles = this.grid.style
+    const column = parseFloat(styles.getPropertyValue('--poster-focus-column'))
+    const row = parseFloat(styles.getPropertyValue('--poster-focus-row'))
+    if (column && row) this.viewport.scrollTo(
+      Math.round(this.viewport.scrollLeft / column) * column,
+      Math.round(this.viewport.scrollTop / row) * row,
+    )
   }
 
   layout() {
@@ -229,8 +238,16 @@ export class PosterWall {
     this.grid.style.setProperty('--poster-top', padding + 'px')
     this.grid.style.setProperty('--poster-columns', String(posterColumns))
     this.grid.style.setProperty('--poster-field-width', (posterColumns * (poster + gap) - gap) + 'px')
-    this.grid.style.setProperty('--poster-focus-pad', width * 0.26 + 'px')
-    this.grid.style.setProperty('--poster-focus-block', height * 0.08 + 'px')
+    const edgeX = this.surface.querySelector('.wall-edge-left')?.getBoundingClientRect().width ?? 0
+    const edgeY = this.surface.querySelector('.wall-edge-top')?.getBoundingClientRect().height ?? 0
+    const stepX = Math.max(32, (width - edgeX * 2) / 4)
+    const stepY = Math.max(44, (height - edgeY * 2) / 4)
+    this.grid.style.setProperty('--poster-focus-pad', edgeX + 'px')
+    this.grid.style.setProperty('--poster-focus-block', edgeY + 'px')
+    this.grid.style.setProperty('--poster-focus-column', stepX + 'px')
+    this.grid.style.setProperty('--poster-focus-row', stepY + 'px')
+    this.grid.style.setProperty('--poster-focus-width', Math.min(stepX * .92, stepY * .92 / 1.4) + 'px')
+    this.grid.style.setProperty('--poster-focus-field', (stepX * posterColumns + edgeX * 2) + 'px')
     this.render()
   }
 
@@ -277,12 +294,22 @@ export class PosterWall {
         pin.setAttribute('aria-hidden', 'true')
         const colors = ['#f74e42', '#ffcf2d', '#57a7ef']
         pin.style.setProperty('--pin', colors[parseInt(poster.id.slice(-4), 16) % colors.length])
-        button.append(posterElement(poster), pin)
+        const counter = document.createElement('span')
+        counter.className = 'poster-like-count'
+        counter.setAttribute('aria-hidden', 'true')
+        const heart = document.createElement('span')
+        heart.textContent = '♥'
+        const number = document.createElement('span')
+        number.dataset.count = ''
+        counter.append(heart, number)
+        button.append(posterElement(poster), pin, counter)
         button.addEventListener('click', () => this.show(poster, button))
         this.tiles.set(key, button)
         this.breeze.observe(button)
       }
       if (!tile) return
+      const counter = tile.querySelector('[data-count]')
+      if (poster && counter) counter.textContent = fourDigits(this.store.likes(poster.id))
       const at = this.grid.children.item(index)
       if (at !== tile) this.grid.insertBefore(tile, at)
     })

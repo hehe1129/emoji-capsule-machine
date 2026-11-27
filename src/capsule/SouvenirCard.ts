@@ -95,9 +95,12 @@ export async function createSouvenir(poster: Poster) {
   }
   if (poster.version === 4) {
     context.fillStyle = ink
-    context.font = '600 28px ' + font
-    context.textAlign = 'right'
-    context.fillText(poster.caption ?? '', 564, 690, 514)
+    const dark = poster.palette === 6 || poster.secondPalette === 6
+    if (dark) {
+      context.fillStyle = '#fff'
+      context.strokeStyle = ink
+      context.lineJoin = 'round'
+    }
     context.textAlign = 'center'
     context.textBaseline = 'middle'
     for (const { text, weight, placement } of posterLabels(poster)) {
@@ -106,6 +109,10 @@ export async function createSouvenir(poster: Poster) {
       context.translate(x, y)
       context.rotate(tilt * Math.PI / 180)
       context.font = weight + ' ' + size + 'px ' + font
+      if (dark) {
+        context.lineWidth = Math.max(1, size * 0.1)
+        context.strokeText(text, 0, 0)
+      }
       context.fillText(text, 0, 0)
       context.restore()
     }

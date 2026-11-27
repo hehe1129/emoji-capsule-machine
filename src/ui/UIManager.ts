@@ -9,6 +9,7 @@ import { ExhibitCamera } from './ExhibitCamera'
 import { PosterEditor } from './PosterEditor'
 import { printPoster } from './PosterPrinter'
 import type { Poster } from '../capsule/PosterLayout'
+import { fourDigits } from '../capsule/PosterStore'
 import { place } from './placement'
 
 const buttonGraceMs = 220
@@ -53,6 +54,8 @@ export class UIManager {
   private readonly souvenir = element<HTMLDialogElement>('souvenir')
   private readonly posterView = element('poster-view')
   readonly editor = new PosterEditor(this.posterView, element('poster-colors'), element('poster-templates'))
+  private readonly likeButton = element<HTMLButtonElement>('poster-like')
+  private liking?: { id: string; add: () => Promise<number> }
   private readonly confirm = element<HTMLButtonElement>('confirm-card')
   private readonly reroll = element<HTMLButtonElement>('reroll-card')
   private readonly pinCard = element<HTMLButtonElement>('pin-card')
@@ -118,6 +121,13 @@ export class UIManager {
     this.take.addEventListener('click', onTake)
     this.closeCard.addEventListener('click', () => this.souvenir.close())
     this.confirm.addEventListener('click', onSavePoster)
+    this.likeButton.addEventListener('click', () => {
+      const current = this.liking
+      if (!current) return
+      void current.add().then(count => {
+        if (this.liking === current) this.updateLike(current.id, count)
+      }).catch(() => this.report('暂时无法点赞，请重试。'))
+    })
     this.reroll.addEventListener('click', onReroll)
     this.pinCard.addEventListener('click', onPinPoster)
     this.souvenir.addEventListener('cancel', event => {
@@ -143,6 +153,8 @@ export class UIManager {
     }
     this.souvenir.addEventListener('close', () => {
       this.editor.close()
+      this.liking = undefined
+      this.likeButton.hidden = true
       delete this.souvenir.dataset.freshPrint
       delete this.souvenir.dataset.reveal
       onClosePoster()
@@ -244,6 +256,8 @@ export class UIManager {
 
   showEditor(poster: Poster) {
     this.editor.open(poster)
+    this.liking = undefined
+    this.likeButton.hidden = true
     this.download.hidden = true
     this.pinCard.hidden = true
     this.confirm.hidden = false
@@ -277,14 +291,23 @@ export class UIManager {
   setPosterStatus(saving: boolean, message = '', posted = false) {
     this.editor.lock(saving)
     this.confirm.disabled = this.reroll.disabled = this.closeCard.disabled = saving
-    this.confirm.textContent = saving ? '正在生成…' : '生成海报'
+    this.confirm.textContent = saving ? '正在生成…' : '生成贴纸'
     this.pinCard.disabled = saving || posted
-    this.pinCard.textContent = posted ? '已粘贴' : saving ? '粘贴中…' : '粘贴海报'
+    this.pinCard.textContent = posted ? '已粘贴' : saving ? '粘贴中…' : '粘贴贴纸'
     this.posterMessage.textContent = message
     this.posterMessage.hidden = !message
   }
 
-  showCard(blob: Blob, canPin = false) {
+  updateLike(id: string, count: number) {
+    if (this.liking?.id !== id) return
+    this.likeButton.querySelector('[data-count]')!.textContent = fourDigits(count)
+    this.likeButton.setAttribute('aria-label', '点赞，当前 ' + count + ' 次')
+  }
+
+  showCard(blob: Blob, canPin = false, likes?: { id: string; count: number; add: () => Promise<number> }) {
+    this.liking = likes
+    this.likeButton.hidden = !likes
+    if (likes) this.updateLike(likes.id, likes.count)
     this.editor.close()
     this.setPosterStatus(false)
     this.confirm.hidden = true
